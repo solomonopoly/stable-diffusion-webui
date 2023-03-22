@@ -2,8 +2,9 @@
 
 function set_theme(theme) {
     var gradioURL = window.location.href;
-    if (!gradioURL.includes('?__theme=')) {
-        window.location.replace(gradioURL + '?__theme=' + theme);
+    const searchParam = new URLSearchParams(window.location.search);
+    if (!gradioURL.includes('__theme=')) {
+      window.location.replace(`${window.location.origin}?${searchParam}&__theme=${theme}`);
     }
 }
 
@@ -129,8 +130,8 @@ function create_submit_args(args) {
     // This can lead to uploading a huge gallery of previously generated images, which leads to an unnecessary delay between submitting and beginning to generate.
     // I don't know why gradio is sending outputs along with inputs, but we can prevent sending the image gallery here, which seems to be an issue for some.
     // If gradio at some point stops sending outputs, this may break something
-    if (Array.isArray(res[res.length - 3])) {
-        res[res.length - 3] = null;
+    if (Array.isArray(res[res.length - 4])) {
+        res[res.length - 4] = null;
     }
 
     return res;
@@ -230,6 +231,77 @@ function modelmerger() {
     var res = create_submit_args(arguments);
     res[0] = id;
     return res;
+}
+
+function debounceCalcuteTimes(func, type, wait=1000,immediate) {
+    let timer = {};
+    timer[type] = null;
+    return function () {
+        let context = this;
+        let args = arguments;
+        if (timer[type]) clearTimeout(timer[type]);
+        if (immediate) {
+            const callNow = !timer;
+            timer[type] = setTimeout(() => {
+                timer = null;
+            }, wait)
+            if (callNow) func.apply(context, args)
+        } else {
+            timer[type] = setTimeout(function(){
+                func.apply(context, args)
+            }, wait);
+        }
+    }
+}
+
+const debounceCalcute = {
+    'txt2img_generate': debounceCalcuteTimes(calcuCreditTimes, 'txt2img_generate'),
+    'img2img_generate': debounceCalcuteTimes(calcuCreditTimes, 'img2img_generate'),
+};
+
+
+async function calcuCreditTimes(width, height, batch_count, batch_size, steps, buttonId, hr_scale = 1) {
+    try {
+        const response = await fetch(`/api/calculateConsume`, {
+            method: "POST", 
+            credentials: "include",
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: buttonId.split('_')[0],
+                image_sizes: [
+                    {
+                        width,
+                        height
+                    }
+                ],
+                batch_count,
+                batch_size,
+                steps,
+                scale: hr_scale
+            })
+        });
+        const { inference } = await response.json();
+        const buttonEle = gradioApp().querySelector(`#${buttonId}`);
+        buttonEle.innerHTML = `Generate <span>(Use ${inference} ${inference === 1 ? 'credit)': 'credits)'}</span> `;
+    } catch(e) {
+        console.log(e);
+    }
+    
+}
+
+function updateGenerateBtn_txt2img(width = 512, height = 512, batch_count = 1, batch_size = 1, steps = 20, hr_scale = 1, enable_hr) {
+    if (enable_hr) {
+        debounceCalcute['txt2img_generate'](width, height, batch_count, batch_size, steps, 'txt2img_generate', hr_scale);
+    } else {
+        debounceCalcute['txt2img_generate'](width, height, batch_count, batch_size, steps, 'txt2img_generate');
+    }
+    
+}
+
+function updateGenerateBtn_img2img(width = 512, height = 512, batch_count = 1, batch_size = 1, steps = 20) {
+    debounceCalcute['img2img_generate'](width, height, batch_count, batch_size, steps, 'img2img_generate');
 }
 
 
@@ -398,6 +470,12 @@ function restart_reload() {
     return [];
 }
 
+function redirect_to_payment(need_upgrade){
+    if (need_upgrade) {
+        window.location.href = "/user?upgradeFlag=true";
+    }
+}
+
 // Simulate an `input` DOM event for Gradio Textbox component. Needed after you edit its contents in javascript, otherwise your edits
 // will only visible on web page and not sent to python.
 function updateInput(target) {
@@ -415,7 +493,22 @@ function selectCheckpoint(name) {
 
 function currentImg2imgSourceResolution(w, h, scaleBy) {
     var img = gradioApp().querySelector('#mode_img2img > div[style="display: block;"] img');
-    return img ? [img.naturalWidth, img.naturalHeight, scaleBy] : [0, 0, scaleBy];
+    const img2imgScaleDom = gradioApp().querySelector("#img2img_scale");
+    const sliderDom = img2imgScaleDom.querySelector("input[type='range']");
+    const inputDom = img2imgScaleDom.querySelector("input[type='number']");
+    const maxImgSizeLimit = 4096;
+    if (img) {
+        const maxScale = Math.min(Math.floor(maxImgSizeLimit / img.naturalWidth), Math.floor(maxImgSizeLimit / img.naturalHeight)).toFixed(2);
+        if (sliderDom.max !== maxScale) {
+            sliderDom.max = maxScale;
+            inputDom.max = maxScale;
+        }
+        
+        return [img.naturalWidth, img.naturalHeight, scaleBy]
+    }
+
+    return [0, 0, scaleBy];
+
 }
 
 function updateImg2imgResizeToTextAfterChangingImage() {
@@ -454,3 +547,223 @@ function switchWidthHeight(tabname) {
     updateInput(height);
     return [];
 }
+
+async function browseModels(){
+    var txt2img_tab = gradioApp().querySelector("#tab_txt2img");
+    var img2img_tab = gradioApp().querySelector("#tab_img2img");
+    var txt2img_model_refresh_button = gradioApp().querySelector('#txt2img_extra_refresh');
+    var img2img_model_refresh_button = gradioApp().querySelector('#img2img_extra_refresh');
+
+    if (txt2img_tab.style.display == "none" && img2img_tab.style.display == "none")
+    {
+        var txt2img_tab_button = document.querySelector("#tabs > div.tab-nav > button:nth-child(1)");
+        txt2img_tab_button.click();
+        await new Promise(r => setTimeout(r, 100));
+    }
+
+    var txt2img_button = gradioApp().querySelector("#txt2img_extra_networks");
+    if (txt2img_tab.style.display == "block")
+    {
+        if (gradioApp().querySelector("div#txt2img_extra_networks").classList.contains("hide"))
+        {
+            fetchHomePageDataAndUpdateList({tabname: 'txt2img', model_type: currentTab.get('txt2img'), page: 1});
+        }
+        txt2img_button.click();
+    }
+
+    var img2img_button = gradioApp().querySelector("#img2img_extra_networks");
+    if (img2img_tab.style.display == "block")
+    {
+        if (gradioApp().querySelector("div#img2img_extra_networks").classList.contains("hide"))
+        {
+            fetchHomePageDataAndUpdateList({tabname: 'img2img', model_type: currentTab.get('img2img'), page: 1});
+        }
+        img2img_button.click();
+    }
+
+    const browseModelsBtn = gradioApp().querySelector('#browse_models_in_workspace');
+    if (gradioApp().querySelector("div#img2img_extra_networks").classList.contains("hide") && gradioApp().querySelector("div#txt2img_extra_networks").classList.contains("hide")) {
+        browseModelsBtn.textContent = 'Hide workspace models';
+    } else {
+        browseModelsBtn.textContent = 'Show workspace models';
+    }
+}
+
+function searchModel({page_name, searchValue}) {
+    const requestUrl = connectNewModelApi ? `/internal/favorite_models?model_type=${model_type_mapper[page_name]}&search_value=${searchValue}&page=1&page_size=${pageSize}` 
+        : `/sd_extra_networks/models?page_name=${page_name}&page=1&search_value=${searchValue}&page_size=${pageSize}&need_refresh=false`;
+    return fetchGet(requestUrl);
+}
+
+function searchPublicModel({page_name, searchValue}) {
+    const requestUrl = connectNewModelApi ? `/internal/models?model_type=${model_type_mapper[page_name]}&search_value=${searchValue}&page=1&page_size=${pageSize}` 
+        : `/sd_extra_networks/models?page_name=${page_name}&page=1&search_value=${searchValue}&page_size=${pageSize}&need_refresh=false`;
+    return fetchGet(requestUrl);
+}
+
+async function getModelFromUrl() {
+
+    // get model form url
+    const urlParam = new URLSearchParams(location.search);
+    // const checkpointModelValueFromUrl = urlParam.get('checkpoint');
+
+    // document.cookie = `selected_checkpoint_model=${checkpointModelValueFromUrl}`;
+    const keyMapModelType = {
+        "checkpoint": "checkpoints",
+        "lora": "lora",
+        "ti": "textual_inversion",
+        "hn": "hypernetworks",
+        "lycoris": "lycoris"
+    }
+
+    const promiseList = [];
+    const urlList = urlParam.entries();
+    const urlKeys =  [];
+    const urlValues =  [];
+    let checkpoint = null;
+
+    for (const [key, value] of urlList) {
+        if (keyMapModelType[key]) {
+            if (checkpoint) {
+                notifier.alert('There are multiple checkpoint in the url, we will use the first one and discard the rest')
+                break;
+            }
+            if (key === 'checkpoint') {
+                checkpoint = value;
+            }
+            // query is in public models
+            const publicModelResponse = searchPublicModel({ page_name: keyMapModelType[key], searchValue: value.toLowerCase() })
+            promiseList.push(publicModelResponse);
+            urlKeys.push(key);
+            urlValues.push(value);
+        }
+    }
+
+    if(promiseList.length === 0) return;
+    const allPromise = Promise.all(promiseList);
+
+    notifier.asyncBlock(allPromise, async (promisesRes) => {
+        promisesRes.forEach(async (publicModelResponse, index) => {
+            if (publicModelResponse && publicModelResponse.status === 200) {
+                const { model_list, allow_negative_prompt } = await publicModelResponse.json();
+                if (model_list && model_list.length > 0) {
+                        // add to personal workspace
+                        const res = await fetchPost({ data: {model_id: model_list[0].id}, url: `/internal/favorite_models` });
+                        if(res.status === 200) {
+                            notifier.success(`Added model ${model_list[0].name} to your workspace successfully.`)
+                        } else if (res.status === 409) {
+                            const { detail } = await res.json();
+                            notifier.alert(detail);
+                        } else {
+                            notifier.alert(`Added model ${model_list[0].name} to your workspace Failed`)
+                        }
+                        if(urlKeys[index] === 'checkpoint') {
+                            // checkpoint dont need to replace text
+                            selectCheckpoint(model_list[0].name);
+                        } else {
+                            if (model_list[0].prompt) {
+                                cardClicked('txt2img', eval(model_list[0].prompt), allow_negative_prompt);
+                            }
+                        }
+                }
+             } else {
+                notifier.alert(`${keyMapModelType[urlKeys[index]]} ${urlValues[index]}} not found`, {
+                    labels: {
+                        alert: 'Model not Found'
+                    }
+                })
+             }
+        })
+    });
+    
+}
+
+function imgExists(url, imgNode, name){
+    const img = new Image();
+    img.src= url;
+    img.onerror = () => {
+        imgNode.src = `https://ui-avatars.com/api/?name=${name}&background=7F8B95&color=fff&length=1&format=svg`
+    }
+    img.onload = () => {
+        imgNode.src = url;
+    }
+}
+
+// get user info
+onUiLoaded(function(){
+    // update generate button text
+    updateGenerateBtn_txt2img();
+    updateGenerateBtn_img2img();
+
+    getModelFromUrl();
+
+    const {search} = location;
+    const isDarkTheme = /theme=dark/g.test(search);
+    if (isDarkTheme) {
+        const rightContent = gradioApp().querySelector(".right-content");
+        const imgNodes = rightContent.querySelectorAll("a > img");
+        imgNodes.forEach(item => {
+            item.style.filter = 'invert(100%)';
+        })
+    }
+   
+
+    fetch(`/api/order_info`, {method: "GET", credentials: "include"}).then(res => {
+        if (res && res.ok && !res.redirected) {
+            return res.json();
+        }
+    }).then(result => {
+        if (result) {
+                const userContent = gradioApp().querySelector(".user-content");
+                const userInfo = userContent.querySelector(".user_info");
+                if (userInfo) {
+                    userInfo.style.display = 'flex';
+                    const img = userInfo.querySelector("a > img");
+                    if (img) {
+                        imgExists(result.picture, img, result.name);
+                    }
+                    const name = userInfo.querySelector(".user_info-name > span");
+                    if (name) {
+                        name.innerHTML = result.name;
+                    }
+                    const logOutLink = userInfo.querySelector(".user_info-name > a");
+                    if (logOutLink) {
+                        logOutLink.target="_self";
+                        // remove cookie
+                        logOutLink.onclick = () => {
+                            document.cookie = 'auth-session=;';
+                        }
+                    }
+
+                    if (result.tier === 'Free') {
+                        const upgradeContent = userContent.querySelector("#upgrade");
+                        if (upgradeContent) {
+                            upgradeContent.style.display = 'flex';
+                        }
+                    }
+
+                    if (result.tier === 'Basic') {
+                        const packageIcon = gradioApp().querySelector('#package');
+                        if (packageIcon) {
+                            packageIcon.style.display = 'flex';
+                            const aLink = packageIcon.querySelector('a');
+                            const resultInfo = {"user_id": result.user_id};
+                            const referenceId = Base64.encodeURI(JSON.stringify(resultInfo));
+                            const host = judgeEnvironment() === 'prod' ? 'https://buy.stripe.com/00g7sF1K90IXa0UeV5' : 'https://buy.stripe.com/test_9AQ15Uewh6kEb2o9AF';
+                            aLink.href = `${host}?prefilled_email=${result.email}&client_reference_id=${referenceId}`;
+                        }
+                    }
+
+                    // set after reload
+                    if (Cookies && Cookies.get(languageCookieKey)) {
+                        if (result.tier === 'Basic') {
+                            if (localStorage.getItem('show-data-survey-info') !== 'true') {
+                                notifier.info('Help us improve our product and get a 20% discount coupon. <a href="/user#/billing"> Start Survey</a>',  {durations: {info: 0}});
+                                localStorage.setItem('show-data-survey-info', 'true');
+                            }
+                        }
+                    }
+                }
+        }
+    })
+});

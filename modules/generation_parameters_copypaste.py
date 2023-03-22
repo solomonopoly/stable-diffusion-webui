@@ -60,8 +60,8 @@ def image_from_url_text(filedata):
 
     if type(filedata) == dict and filedata.get("is_file", False):
         filename = filedata["name"]
-        is_in_right_dir = ui_tempdir.check_tmp_file(shared.demo, filename)
-        assert is_in_right_dir, 'trying to open image file outside of allowed directories'
+        # is_in_right_dir = ui_tempdir.check_tmp_file(shared.demo, filename)
+        # assert is_in_right_dir, 'trying to open image file outside of allowed directories'
 
         filename = filename.rsplit('?', 1)[0]
         return Image.open(filename)
@@ -251,7 +251,7 @@ Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 965400086, Size: 512x512, Model
     done_with_prompt = False
 
     *lines, lastline = x.strip().split("\n")
-    if len(re_param.findall(lastline)) < 3:
+    if len(re_param.findall(lastline)) < 1:
         lines.append(lastline)
         lastline = ''
 

@@ -1,15 +1,24 @@
 import json
+import csv
 import html
 import os
 import platform
 import sys
+import shutil
+import time
 
 import gradio as gr
 import subprocess as sp
 
-from modules import call_queue, shared
+from fastapi import FastAPI, HTTPException
+from starlette.responses import FileResponse
+
+from modules import call_queue, shared, hashes
 from modules.generation_parameters_copypaste import image_from_url_text
+from modules.paths import Paths
+from modules.paths_internal import script_path
 import modules.images
+import modules.user
 
 folder_symbol = '\U0001f4c2'  # 📂
 
@@ -31,8 +40,7 @@ def plaintext_to_html(text):
     return text
 
 
-def save_files(js_data, images, do_make_zip, index):
-    import csv
+def save_files(request: gr.Request, js_data, images, do_make_zip, index):
     filenames = []
     fullfns = []
 
@@ -42,11 +50,15 @@ def save_files(js_data, images, do_make_zip, index):
             if d is not None:
                 for key, value in d.items():
                     setattr(self, key, value)
+            self._request = request
+
+        def get_request(self):
+            return self._request
 
     data = json.loads(js_data)
 
     p = MyObject(data)
-    path = shared.opts.outdir_save
+    save_to = Paths(request).save_dir()
     save_to_dirs = shared.opts.use_save_to_dirs_for_ui
     extension: str = shared.opts.samples_format
     start_index = 0
@@ -56,9 +68,7 @@ def save_files(js_data, images, do_make_zip, index):
         images = [images[index]]
         start_index = index
 
-    os.makedirs(shared.opts.outdir_save, exist_ok=True)
-
-    with open(os.path.join(shared.opts.outdir_save, "log.csv"), "a", encoding="utf8", newline='') as file:
+    with open(os.path.join(save_to, "log.csv"), "a", encoding="utf8", newline='') as file:
         at_start = file.tell() == 0
         writer = csv.writer(file)
         if at_start:
@@ -70,9 +80,9 @@ def save_files(js_data, images, do_make_zip, index):
             is_grid = image_index < p.index_of_first_image
             i = 0 if is_grid else (image_index - p.index_of_first_image)
 
-            fullfn, txt_fullfn = modules.images.save_image(image, path, "", seed=p.all_seeds[i], prompt=p.all_prompts[i], extension=extension, info=p.infotexts[image_index], grid=is_grid, p=p, save_to_dirs=save_to_dirs)
+            fullfn, txt_fullfn = modules.images.save_image(image, save_to, "", seed=p.all_seeds[i], prompt=p.all_prompts[i], extension=extension, info=p.infotexts[image_index], grid=is_grid, p=p, save_to_dirs=save_to_dirs)
 
-            filename = os.path.relpath(fullfn, path)
+            filename = os.path.relpath(fullfn, save_to)
             filenames.append(filename)
             fullfns.append(fullfn)
             if txt_fullfn:
@@ -83,7 +93,7 @@ def save_files(js_data, images, do_make_zip, index):
 
     # Make Zip
     if do_make_zip:
-        zip_filepath = os.path.join(path, "images.zip")
+        zip_filepath = os.path.join(save_to, "images.zip")
 
         from zipfile import ZipFile
         with ZipFile(zip_filepath, "w") as zip_file:
@@ -130,7 +140,7 @@ Requested path was: {f}
         generation_info = None
         with gr.Column():
             with gr.Row(elem_id=f"image_buttons_{tabname}", elem_classes="image-buttons"):
-                open_folder_button = gr.Button(folder_symbol, visible=not shared.cmd_opts.hide_ui_dir_config)
+                # open_folder_button = gr.Button(folder_symbol, visible=not shared.cmd_opts.hide_ui_dir_config)
 
                 if tabname != "extras":
                     save = gr.Button('Save', elem_id=f'save_{tabname}')
@@ -138,11 +148,14 @@ Requested path was: {f}
 
                 buttons = parameters_copypaste.create_buttons(["img2img", "inpaint", "extras"])
 
-            open_folder_button.click(
-                fn=lambda: open_folder(shared.opts.outdir_samples or outdir),
-                inputs=[],
-                outputs=[],
-            )
+            def on_open_folder(request: gr.Request):
+                open_folder(Paths(request).outdir() or outdir)
+
+            # open_folder_button.click(
+            #     fn=on_open_folder,
+            #     inputs=[],
+            #     outputs=[],
+            # )
 
             if tabname != "extras":
                 download_files = gr.File(None, file_count="multiple", interactive=False, show_label=False, visible=False, elem_id=f'download_files_{tabname}')
@@ -211,3 +224,155 @@ Requested path was: {f}
                 ))
 
             return result_gallery, generation_info if tabname != "extras" else html_info_x, html_info, html_log
+
+
+def create_upload_button(
+        label, elem_id, destination_dir,
+        model_tracking_csv="models.csv", button_style="", visible=True,
+        start_uploading_call_back="", finish_uploading_call_back=""):
+
+    model_list_csv_path = os.path.join(destination_dir, model_tracking_csv)
+
+    def verify_model_existence(hash_str):
+        if os.path.exists(model_list_csv_path):
+            with open(model_list_csv_path) as csvfile:
+                modelreader = csv.reader(csvfile, delimiter=',')
+                for file_hash_str, file_name, user_id, timestamp_s in modelreader:
+                    if hash_str == file_hash_str:
+                        return os.path.basename(file_name)
+        return hash_str
+
+    def upload_file(file, hash_str, request: gr.Request):
+        file_path = file.name
+        readable_hash = hashes.calculate_sha256(file_path)
+        if hash_str == readable_hash:
+            new_path = shutil.move(file_path, destination_dir)
+            user = modules.user.User.current_user(request)
+            with open(model_list_csv_path, 'a') as csvfile:
+                modelwriter = csv.writer(csvfile, delimiter=',')
+                modelwriter.writerow([hash_str, new_path, user.uid, time.time()])
+            return os.path.basename(new_path)
+        return readable_hash
+    hash_str_id = elem_id+'-hash-str'
+    hash_str = gr.Textbox(label='hash str', elem_id=hash_str_id, visible=False)
+    existing_filepath = gr.Textbox(label='existing filepath', visible=False)
+    uploaded_filepath = gr.Textbox(label='uploaded filepath', visible=False)
+    button_id = elem_id
+    hidden_button_id = "hidden-button-" + elem_id
+    upload_button_id = "hidden-upload-button-" + elem_id
+    button = gr.Button(label, elem_id=button_id, variant="primary", visible=visible)
+    if button_style:
+        gr.HTML("""
+        <style>
+        #{button_id} {{
+            {button_style};
+        }}
+        <\\style>
+        """.format(button_id=button_id, button_style=button_style), visible=False)
+    button.style(full_width=False)
+
+    compute_hash_js = """
+        () => {{
+            const upload_button = document.querySelector(
+                "#{upload_button_id}");
+            var input_box = upload_button.previousElementSibling;
+            var extra_input = input_box.cloneNode();
+            extra_input.id = "input-for-hash-{elem_id}";
+
+            extra_input.onchange = async (e) => {{
+                const target = e.target;
+                if (!target.files || target.files.length == 0) return;
+
+                notifier.info('Start to upload model.');
+                var button = document.querySelector("#{button_id}");
+                button.disabled = true;
+                {start_uploading_call_back}
+
+                input_box.files = target.files;
+                const hash_str = await hashFile(input_box.files[0]);
+                const checkpoint_hash_str = document.querySelector("#{hash_str_id} > label > textarea");
+                checkpoint_hash_str.value = hash_str;
+                const event = new Event("input");
+                checkpoint_hash_str.dispatchEvent(event);
+                const hidden_button = document.querySelector(
+                    "#{hidden_button_id}");
+                hidden_button.click();
+            }}
+        extra_input.click();
+        }}
+    """.format(
+        upload_button_id=upload_button_id,
+        elem_id=elem_id,
+        button_id=button_id,
+        start_uploading_call_back=start_uploading_call_back,
+        hash_str_id=hash_str_id,
+        hidden_button_id=hidden_button_id)
+    button.click(None, None, None, _js=compute_hash_js)
+    hidden_button = gr.Button("Verify hash", elem_id=hidden_button_id, visible=False)
+    hidden_button.click(verify_model_existence, hash_str, existing_filepath, api_name="check_hash")
+    upload_finish_js = """
+        notifier.success('Model uploaded. Use the refresh button to load it.');
+        var button = document.querySelector("#{button_id}");
+        button.disabled = false;
+        {finish_uploading_call_back}
+    """.format(
+        button_id=button_id,
+        finish_uploading_call_back=finish_uploading_call_back)
+    existing_filepath.change(None, [hash_str, existing_filepath], None, _js="""
+        (hash_str, filepath) => {{
+            if (hash_str == filepath) {{
+                const upload_button = document.querySelector(
+                    "#{upload_button_id}");
+                var input_box = upload_button.previousElementSibling;
+                const event = new Event("change");
+                input_box.dispatchEvent(event);
+            }} else {{
+                {upload_finish_js}
+            }}
+        }}
+    """.format(upload_button_id=upload_button_id, upload_finish_js=upload_finish_js))
+    upload_button = gr.UploadButton(
+        label="Upload a file",
+        elem_id=upload_button_id,
+        file_types=[".ckpt", ".safetensors", ".bin", ".pt"],
+        visible=False
+    )
+    upload_button.upload(
+        fn=upload_file,
+        inputs=[upload_button, hash_str],
+        outputs=uploaded_filepath
+    )
+    notify_upload_finished_js = """
+        () => {{
+            {upload_finish_js}
+        }}""".format(
+            upload_finish_js=upload_finish_js)
+    uploaded_filepath.change(None, None, None, _js=notify_upload_finished_js)
+    return button
+
+
+def create_browse_model_button(label, elem_id, button_style="", js_function='browseModels', visible=True, ):
+    button = gr.Button(label, elem_id=elem_id, variant="secondary", visible=visible)
+    button.click(None, list(), list(), _js=js_function)
+    if button_style:
+        gr.HTML("""
+        <style>
+        #{button_id} {{
+            {button_style};
+        }}
+        <\\style>
+        """.format(button_id=elem_id, button_style=button_style), visible=False)
+    button.style(full_width=False)
+
+def get_static_files(filepath: str):
+    full_path = os.path.join(script_path, "static", filepath)
+    # Make sure the path is in static folder
+    full_path = os.path.abspath(full_path)
+    if not os.path.exists(full_path) or os.path.abspath(os.path.join(script_path, "static")) not in full_path:
+        raise HTTPException(status_code=404, detail=f"{filepath} not found")
+
+    return FileResponse(full_path)
+
+
+def add_static_filedir_to_demo(app: FastAPI, route="public"):
+    app.add_api_route(f"/" + route + "/{filepath:path}", get_static_files, methods=["GET"])

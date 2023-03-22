@@ -1,3 +1,6 @@
+import logging
+import traceback
+
 import torch
 from torch.nn.functional import silu
 from types import MethodType
@@ -5,7 +8,7 @@ from types import MethodType
 import modules.textual_inversion.textual_inversion
 from modules import devices, sd_hijack_optimizations, shared, script_callbacks, errors
 from modules.hypernetworks import hypernetwork
-from modules.shared import cmd_opts
+from modules.shared import cmd_opts, opts
 from modules import sd_hijack_clip, sd_hijack_open_clip, sd_hijack_unet, sd_hijack_xlmr, xlmr
 
 import ldm.modules.attention
@@ -186,6 +189,9 @@ class StableDiffusionModelHijack:
         self.apply_optimizations()
 
         self.clip = m.cond_stage_model
+        if not self.clip:
+            logging.error("hijack: cond_stage_model is None")
+            traceback.print_exc()
 
         def flatten(el):
             flattened = [flatten(children) for children in el.children()]
@@ -231,6 +237,9 @@ class StableDiffusionModelHijack:
 
     def get_prompt_lengths(self, text):
         if self.clip is None:
+            # If Clip is none, need to give a total token number
+            # token_count = len(text.split(' '))
+            # return token_count, opts.default_clip_target_token_count
             return "-", "-"
 
         _, token_count = self.clip.process_texts([text])

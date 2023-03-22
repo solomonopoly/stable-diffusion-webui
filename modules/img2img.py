@@ -1,5 +1,6 @@
 import os
 
+import gradio as gr
 import numpy as np
 from PIL import Image, ImageOps, ImageFilter, ImageEnhance, ImageChops, UnidentifiedImageError
 
@@ -10,6 +11,7 @@ from modules.shared import opts, state
 import modules.shared as shared
 import modules.processing as processing
 from modules.ui import plaintext_to_html
+from modules.paths import Paths
 import modules.scripts
 
 
@@ -78,18 +80,24 @@ def process_batch(p, input_dir, output_dir, inpaint_mask_dir, args):
                 processed_image.save(os.path.join(output_dir, filename))
 
 
-def img2img(id_task: str, mode: int, prompt: str, negative_prompt: str, prompt_styles, init_img, sketch, init_img_with_mask, inpaint_color_sketch, inpaint_color_sketch_orig, init_img_inpaint, init_mask_inpaint, steps: int, sampler_index: int, mask_blur: int, mask_alpha: float, inpainting_fill: int, restore_faces: bool, tiling: bool, n_iter: int, batch_size: int, cfg_scale: float, image_cfg_scale: float, denoising_strength: float, seed: int, subseed: int, subseed_strength: float, seed_resize_from_h: int, seed_resize_from_w: int, seed_enable_extras: bool, selected_scale_tab: int, height: int, width: int, scale_by: float, resize_mode: int, inpaint_full_res: bool, inpaint_full_res_padding: int, inpainting_mask_invert: int, img2img_batch_input_dir: str, img2img_batch_output_dir: str, img2img_batch_inpaint_mask_dir: str, override_settings_texts, *args):
+def img2img(request: gr.Request, id_task: str, mode: int, prompt: str, negative_prompt: str, prompt_styles, init_img, sketch, init_img_with_mask, inpaint_color_sketch, inpaint_color_sketch_orig, init_img_inpaint, init_mask_inpaint, steps: int, sampler_index: int, mask_blur: int, mask_alpha: float, inpainting_fill: int, restore_faces: bool, tiling: bool, n_iter: int, batch_size: int, cfg_scale: float, image_cfg_scale: float, denoising_strength: float, seed: int, subseed: int, subseed_strength: float, seed_resize_from_h: int, seed_resize_from_w: int, seed_enable_extras: bool, selected_scale_tab: int, height: int, width: int, scale_by: float, resize_mode: int, inpaint_full_res: bool, inpaint_full_res_padding: int, inpainting_mask_invert: int, img2img_batch_input_dir: str, img2img_batch_output_dir: str, img2img_batch_inpaint_mask_dir: str, override_settings_texts,  *args):
     override_settings = create_override_settings_dict(override_settings_texts)
 
     is_batch = mode == 5
 
     if mode == 0:  # img2img
+        if not init_img:
+            raise Exception("initialize image is not present")
         image = init_img.convert("RGB")
         mask = None
     elif mode == 1:  # img2img sketch
+        if not sketch:
+            raise Exception("sketch image is not present")
         image = sketch.convert("RGB")
         mask = None
     elif mode == 2:  # inpaint
+        if not init_img_with_mask or "image" not in init_img_with_mask or "mask" not in init_img_with_mask:
+            raise Exception("initialize image or mask image is not present")
         image, mask = init_img_with_mask["image"], init_img_with_mask["mask"]
         alpha_mask = ImageOps.invert(image.split()[-1]).convert('L').point(lambda x: 255 if x > 0 else 0, mode='1')
         mask = ImageChops.lighter(alpha_mask, mask.convert('L')).convert('L')
@@ -97,6 +105,8 @@ def img2img(id_task: str, mode: int, prompt: str, negative_prompt: str, prompt_s
     elif mode == 3:  # inpaint sketch
         image = inpaint_color_sketch
         orig = inpaint_color_sketch_orig or inpaint_color_sketch
+        if not image or not orig:
+            raise Exception("inpaint sketch image or original image is not present")
         pred = np.any(np.array(image) != np.array(orig), axis=-1)
         mask = Image.fromarray(pred.astype(np.uint8) * 255, "L")
         mask = ImageEnhance.Brightness(mask).enhance(1 - mask_alpha / 100)
@@ -104,6 +114,8 @@ def img2img(id_task: str, mode: int, prompt: str, negative_prompt: str, prompt_s
         image = Image.composite(image.filter(blur), orig, mask.filter(blur))
         image = image.convert("RGB")
     elif mode == 4:  # inpaint upload mask
+        if not init_img_inpaint or not init_mask_inpaint:
+            raise Exception("inpaint initialize image or inpaint initialize mask image is not present")
         image = init_img_inpaint
         mask = init_mask_inpaint
     else:
@@ -122,10 +134,11 @@ def img2img(id_task: str, mode: int, prompt: str, negative_prompt: str, prompt_s
 
     assert 0. <= denoising_strength <= 1., 'can only work with strength in [0.0, 1.0]'
 
+    paths = Paths(request)
     p = StableDiffusionProcessingImg2Img(
         sd_model=shared.sd_model,
-        outpath_samples=opts.outdir_samples or opts.outdir_img2img_samples,
-        outpath_grids=opts.outdir_grids or opts.outdir_img2img_grids,
+        outpath_samples=paths.outdir_img2img_samples(),
+        outpath_grids=paths.outdir_img2img_grids(),
         prompt=prompt,
         negative_prompt=negative_prompt,
         styles=prompt_styles,
@@ -156,6 +169,7 @@ def img2img(id_task: str, mode: int, prompt: str, negative_prompt: str, prompt_s
         inpainting_mask_invert=inpainting_mask_invert,
         override_settings=override_settings,
     )
+    p.set_request(request)
 
     p.scripts = modules.scripts.scripts_img2img
     p.script_args = args
