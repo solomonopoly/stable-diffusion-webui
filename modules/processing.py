@@ -184,6 +184,19 @@ class StableDiffusionProcessing:
         self.uc = None
         self.c = None
 
+        self._global_prompt_styles = None
+        self._request = None
+
+    def global_prompt_styles(self):
+        return self._global_prompt_styles
+
+    def set_request(self, request):
+        self._request = request
+        self._global_prompt_styles = shared.prompt_styles(request.request)
+
+    def get_request(self):
+        return self._request
+
     @property
     def sd_model(self):
         return shared.sd_model
@@ -305,16 +318,20 @@ class StableDiffusionProcessing:
     def setup_prompts(self):
         if type(self.prompt) == list:
             self.all_prompts = self.prompt
+            #self.all_prompts = [self.global_prompt_styles().apply_styles_to_prompt(x, self.styles) for x in self.prompt]
         else:
             self.all_prompts = self.batch_size * self.n_iter * [self.prompt]
+            #self.all_prompts = self.batch_size * self.n_iter * [self.global_prompt_styles().apply_styles_to_prompt(self.prompt, self.styles)]
 
         if type(self.negative_prompt) == list:
             self.all_negative_prompts = self.negative_prompt
+            #self.all_negative_prompts = [self.global_prompt_styles().apply_negative_styles_to_prompt(x, self.styles) for x in self.negative_prompt]
         else:
             self.all_negative_prompts = self.batch_size * self.n_iter * [self.negative_prompt]
+            #self.all_negative_prompts = self.batch_size * self.n_iter * [self.global_prompt_styles().apply_negative_styles_to_prompt(self.negative_prompt, self.styles)]
 
-        self.all_prompts = [shared.prompt_styles.apply_styles_to_prompt(x, self.styles) for x in self.all_prompts]
-        self.all_negative_prompts = [shared.prompt_styles.apply_negative_styles_to_prompt(x, self.styles) for x in self.all_negative_prompts]
+        self.all_prompts = [self.global_prompt_styles().apply_styles_to_prompt(x, self.styles) for x in self.all_prompts]
+        self.all_negative_prompts = [self.global_prompt_styles().apply_negative_styles_to_prompt(x, self.styles) for x in self.all_negative_prompts]
 
     def get_conds_with_caching(self, function, required_prompts, steps, caches, extra_network_data):
         """
@@ -595,10 +612,12 @@ def create_infotext(p, all_prompts, all_seeds, all_subseeds, comments=None, iter
 
 
 def process_images(p: StableDiffusionProcessing) -> Processed:
+    # Run preprocess before everything else
     if p.scripts is not None:
+        p.scripts.preprocess(p)
         p.scripts.before_process(p)
 
-    stored_opts = {k: opts.data[k] for k in p.override_settings.keys()}
+    stored_opts = {k: getattr(opts, k) for k in p.override_settings.keys()}
 
     try:
         # if no checkpoint override or the override checkpoint can't be found, remove override entry and load opts checkpoint
@@ -613,7 +632,9 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
                 sd_models.reload_model_weights()
 
             if k == 'sd_vae':
-                sd_vae.reload_vae_weights()
+                vae_file_path = os.path.join(sd_vae.vae_path, v)
+                if os.path.exists(vae_file_path):
+                    sd_vae.reload_vae_weights(vae_file=vae_file_path)
 
         sd_models.apply_token_merging(p.sd_model, p.get_token_merging_ratio())
 
@@ -628,7 +649,11 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
                 setattr(opts, k, v)
 
                 if k == 'sd_vae':
-                    sd_vae.reload_vae_weights()
+                    vae_file_path = os.path.join(sd_vae.vae_path, v)
+                    if os.path.exists(vae_file_path):
+                        sd_vae.reload_vae_weights(vae_file=vae_file_path)
+                    else:
+                        sd_vae.reload_vae_weights()
 
     return res
 
@@ -1112,8 +1137,8 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
         else:
             self.all_hr_negative_prompts = self.batch_size * self.n_iter * [self.hr_negative_prompt]
 
-        self.all_hr_prompts = [shared.prompt_styles.apply_styles_to_prompt(x, self.styles) for x in self.all_hr_prompts]
-        self.all_hr_negative_prompts = [shared.prompt_styles.apply_negative_styles_to_prompt(x, self.styles) for x in self.all_hr_negative_prompts]
+        self.all_hr_prompts = [self.global_prompt_styles().apply_styles_to_prompt(x, self.styles) for x in self.all_hr_prompts]
+        self.all_hr_negative_prompts = [self.global_prompt_styles().apply_negative_styles_to_prompt(x, self.styles) for x in self.all_hr_negative_prompts]
 
     def calculate_hr_conds(self):
         if self.hr_c is not None:

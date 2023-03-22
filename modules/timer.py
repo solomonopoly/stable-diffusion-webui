@@ -1,4 +1,14 @@
+import pathlib
 import time
+import logging
+from modules.shared import cmd_opts
+
+_handler = logging.FileHandler(pathlib.Path(cmd_opts.logging_file_dir).joinpath('metrics.log'), mode='a')
+_handler.setLevel(logging.DEBUG)
+_handler.setFormatter(logging.Formatter("%(asctime)s,%(message)s"))
+
+_logger = logging.getLogger('metrics')
+_logger.addHandler(_handler)
 
 
 class TimerSubcategory:
@@ -20,7 +30,9 @@ class TimerSubcategory:
 
 
 class Timer:
-    def __init__(self):
+    def __init__(self, name, *args):
+        self._name = name
+        self._args = args
         self.start = time.time()
         self.records = {}
         self.total = 0
@@ -51,7 +63,20 @@ class Timer:
         subcat = TimerSubcategory(self, name)
         return subcat
 
+    def _save_to_logger(self):
+        # sort key
+        keys = list(self.records.keys())
+        keys.sort()
+
+        # make log record
+        values = [self._name, *self._args, f'{self.total:.2f}']
+        values.extend([f'{self.records[x]:.2f}' for x in keys])
+
+        # save records to log file
+        _logger.info(','.join(values))
+
     def summary(self):
+        self._save_to_logger()
         res = f"{self.total:.1f}s"
 
         additions = [(category, time_taken) for category, time_taken in self.records.items() if time_taken >= 0.1 and '/' not in category]
@@ -71,6 +96,6 @@ class Timer:
         self.__init__()
 
 
-startup_timer = Timer()
+startup_timer = Timer('main')
 
 startup_record = None
