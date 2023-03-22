@@ -112,6 +112,7 @@ callback_map = dict(
     callbacks_on_reload=[],
     callbacks_list_optimizers=[],
     callbacks_list_unets=[],
+    callbacks_state_updated=[],
 )
 
 
@@ -140,7 +141,8 @@ def app_reload_callback():
 def model_loaded_callback(sd_model):
     for c in callback_map['callbacks_model_loaded']:
         try:
-            c.callback(sd_model)
+            if sd_model:
+                c.callback(sd_model)
         except Exception:
             report_exception(c, 'model_loaded_callback')
 
@@ -283,6 +285,14 @@ def list_unets_callback():
             report_exception(c, 'list_unets')
 
     return res
+
+
+def state_updated_callback(state):
+    for c in callback_map['callbacks_state_updated']:
+        try:
+            c.callback(state)
+        except Exception:
+            report_exception(c, 'list_unets')
 
 
 def add_callback(callbacks, fun):
@@ -451,3 +461,12 @@ def on_list_unets(callback):
     The function will be called with one argument, a list, and shall add objects of type modules.sd_unet.SdUnetOption to it."""
 
     add_callback(callback_map['callbacks_list_unets'], callback)
+
+
+def on_state_updated(callback):
+    """register a function to be called when shared.state is updated.
+    The callback is called with one argument:
+      - shared.state.
+    """
+
+    add_callback(callback_map['callbacks_state_updated'], callback)

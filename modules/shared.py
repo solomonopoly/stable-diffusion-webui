@@ -2,11 +2,14 @@ import datetime
 import json
 import os
 import re
+import pathlib
 import sys
 import threading
 import time
 import logging
 
+import starlette.requests
+from PIL import Image
 import gradio as gr
 import torch
 import tqdm
@@ -16,8 +19,11 @@ import modules.interrogate
 import modules.memmon
 import modules.styles
 import modules.devices as devices
-from modules import localization, script_loading, errors, ui_components, shared_items, cmd_args
+from modules import localization, script_loading, errors, ui_components, shared_items, cmd_args, script_callbacks
 from modules.paths_internal import models_path, script_path, data_path, sd_configs_path, sd_default_config, sd_model_file, default_sd_model_file, extensions_dir, extensions_builtin_dir  # noqa: F401
+from modules.paths import Paths
+import modules.system_monitor
+
 from ldm.models.diffusion.ddpm import LatentDiffusion
 from typing import Optional
 
@@ -96,21 +102,31 @@ class State:
     skipped = False
     interrupted = False
     job = ""
-    job_no = 0
-    job_count = 0
+    _job_no = 0
+    _job_count = 0
     processing_has_refined_job_count = False
     job_timestamp = '0'
-    sampling_step = 0
-    sampling_steps = 0
-    current_latent = None
+    _sampling_step = 0
+    _sampling_steps = 0
+    _current_latent = None
     current_image = None
     current_image_sampling_step = 0
     id_live_preview = 0
     textinfo = None
     time_start = None
     server_start = None
+    server_port = 0
     _server_command_signal = threading.Event()
     _server_command: Optional[str] = None
+
+    @property
+    def current_latent(self):
+        return self._current_latent
+
+    @current_latent.setter
+    def current_latent(self, value):
+        self._current_latent = value
+        script_callbacks.state_updated_callback(self)
 
     @property
     def need_restart(self) -> bool:
@@ -126,6 +142,42 @@ class State:
     @property
     def server_command(self):
         return self._server_command
+
+    @property
+    def job_count(self):
+        return self._job_count
+
+    @job_count.setter
+    def job_count(self, value):
+        self._job_count = value
+        script_callbacks.state_updated_callback(self)
+
+    @property
+    def job_no(self):
+        return self._job_no
+
+    @job_no.setter
+    def job_no(self, value):
+        self._job_no = value
+        script_callbacks.state_updated_callback(self)
+
+    @property
+    def sampling_steps(self):
+        return self._sampling_steps
+
+    @sampling_steps.setter
+    def sampling_steps(self, value):
+        self._sampling_steps = value
+        script_callbacks.state_updated_callback(self)
+
+    @property
+    def sampling_step(self):
+        return self._sampling_step
+
+    @sampling_step.setter
+    def sampling_step(self, value):
+        self._sampling_step = value
+        script_callbacks.state_updated_callback(self)
 
     @server_command.setter
     def server_command(self, value: Optional[str]) -> None:
@@ -147,6 +199,8 @@ class State:
         return None
 
     def request_restart(self) -> None:
+        import modules.call_utils
+        modules.call_utils.check_insecure_calls()
         self.interrupt()
         self.server_command = "restart"
         log.info("Received restart request")
@@ -154,10 +208,12 @@ class State:
     def skip(self):
         self.skipped = True
         log.info("Received skip request")
+        script_callbacks.state_updated_callback(self)
 
     def interrupt(self):
         self.interrupted = True
         log.info("Received interrupt request")
+        script_callbacks.state_updated_callback(self)
 
     def nextjob(self):
         if opts.live_previews_enable and opts.show_progress_every_n_steps == -1:
@@ -166,6 +222,7 @@ class State:
         self.job_no += 1
         self.sampling_step = 0
         self.current_image_sampling_step = 0
+        script_callbacks.state_updated_callback(self)
 
     def dict(self):
         obj = {
@@ -235,8 +292,15 @@ class State:
 state = State()
 state.server_start = time.time()
 
-styles_filename = cmd_opts.styles_file
-prompt_styles = modules.styles.StyleDatabase(styles_filename)
+
+def prompt_styles(request: gr.Request = None) -> modules.styles.StyleDatabase:
+    filename = Paths(request).styles_filename()
+    return modules.styles.StyleDatabase(filename)
+
+
+def reload_style(request: starlette.requests.Request):
+    return prompt_styles(request).reload()
+
 
 interrogator = modules.interrogate.InterrogateModels("interrogate")
 
@@ -289,14 +353,14 @@ def options_section(section_identifier, options_dict):
     return options_dict
 
 
-def list_checkpoint_tiles():
+def list_checkpoint_tiles(request: gr.Request = None):
     import modules.sd_models
-    return modules.sd_models.checkpoint_tiles()
+    return modules.sd_models.checkpoint_tiles(request)
 
 
-def refresh_checkpoints():
+def refresh_checkpoints(request: gr.Request = None):
     import modules.sd_models
-    return modules.sd_models.list_models()
+    return modules.sd_models.list_models(request)
 
 
 def list_samplers():
@@ -351,17 +415,17 @@ options_templates.update(options_section(('saving-images', "Saving images/grids"
 
 }))
 
-options_templates.update(options_section(('saving-paths', "Paths for saving"), {
-    "outdir_samples": OptionInfo("", "Output directory for images; if empty, defaults to three directories below", component_args=hide_dirs),
-    "outdir_txt2img_samples": OptionInfo("outputs/txt2img-images", 'Output directory for txt2img images', component_args=hide_dirs),
-    "outdir_img2img_samples": OptionInfo("outputs/img2img-images", 'Output directory for img2img images', component_args=hide_dirs),
-    "outdir_extras_samples": OptionInfo("outputs/extras-images", 'Output directory for images from extras tab', component_args=hide_dirs),
-    "outdir_grids": OptionInfo("", "Output directory for grids; if empty, defaults to two directories below", component_args=hide_dirs),
-    "outdir_txt2img_grids": OptionInfo("outputs/txt2img-grids", 'Output directory for txt2img grids', component_args=hide_dirs),
-    "outdir_img2img_grids": OptionInfo("outputs/img2img-grids", 'Output directory for img2img grids', component_args=hide_dirs),
-    "outdir_save": OptionInfo("log/images", "Directory for saving images using the Save button", component_args=hide_dirs),
-    "outdir_init_images": OptionInfo("outputs/init-images", "Directory for saving init images when using img2img", component_args=hide_dirs),
-}))
+# options_templates.update(options_section(('saving-paths', "Paths for saving"), {
+#     "outdir_samples": OptionInfo("", "Output directory for images; if empty, defaults to three directories below", component_args=hide_dirs),
+#     "outdir_txt2img_samples": OptionInfo("outputs/txt2img-images", 'Output directory for txt2img images', component_args=hide_dirs),
+#     "outdir_img2img_samples": OptionInfo("outputs/img2img-images", 'Output directory for img2img images', component_args=hide_dirs),
+#     "outdir_extras_samples": OptionInfo("outputs/extras-images", 'Output directory for images from extras tab', component_args=hide_dirs),
+#     "outdir_grids": OptionInfo("", "Output directory for grids; if empty, defaults to two directories below", component_args=hide_dirs),
+#     "outdir_txt2img_grids": OptionInfo("outputs/txt2img-grids", 'Output directory for txt2img grids', component_args=hide_dirs),
+#     "outdir_img2img_grids": OptionInfo("outputs/img2img-grids", 'Output directory for img2img grids', component_args=hide_dirs),
+#     "outdir_save": OptionInfo("log/images", "Directory for saving images using the Save button", component_args=hide_dirs),
+#     "outdir_init_images": OptionInfo("outputs/init-images", "Directory for saving init images when using img2img", component_args=hide_dirs),
+# }))
 
 options_templates.update(options_section(('saving-to-dirs', "Saving to a directory"), {
     "save_to_dirs": OptionInfo(True, "Save images to a subdirectory"),
@@ -409,8 +473,13 @@ options_templates.update(options_section(('training', "Training"), {
     "training_tensorboard_flush_every": OptionInfo(120, "How often, in seconds, to flush the pending tensorboard events and summaries to disk."),
 }))
 
+
+def _list_checkpoint_tiles(request: gr.Request = None):
+    return {"choices": list_checkpoint_tiles(request)}
+
+
 options_templates.update(options_section(('sd', "Stable Diffusion"), {
-    "sd_model_checkpoint": OptionInfo(None, "Stable Diffusion checkpoint", gr.Dropdown, lambda: {"choices": list_checkpoint_tiles()}, refresh=refresh_checkpoints),
+    "sd_model_checkpoint": OptionInfo(None, "Stable Diffusion checkpoint", gr.Dropdown, _list_checkpoint_tiles, refresh=refresh_checkpoints),
     "sd_checkpoint_cache": OptionInfo(0, "Checkpoints to cache in RAM", gr.Slider, {"minimum": 0, "maximum": 10, "step": 1}),
     "sd_vae_checkpoint_cache": OptionInfo(0, "VAE Checkpoints to cache in RAM", gr.Slider, {"minimum": 0, "maximum": 10, "step": 1}),
     "sd_vae": OptionInfo("Automatic", "SD VAE", gr.Dropdown, lambda: {"choices": shared_items.sd_vae_items()}, refresh=shared_items.refresh_vae_list).info("choose VAE model: Automatic = use one with same filename as checkpoint; None = use VAE from checkpoint"),
@@ -427,6 +496,7 @@ options_templates.update(options_section(('sd', "Stable Diffusion"), {
     "comma_padding_backtrack": OptionInfo(20, "Prompt word wrap length limit", gr.Slider, {"minimum": 0, "maximum": 74, "step": 1}).info("in tokens - for texts shorter than specified, if they don't fit into 75 token limit, move them to the next 75 token chunk"),
     "CLIP_stop_at_last_layers": OptionInfo(1, "Clip skip", gr.Slider, {"minimum": 1, "maximum": 12, "step": 1}).link("wiki", "https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Features#clip-skip").info("ignore last layers of CLIP network; 1 ignores none, 2 ignores one layer"),
     "upcast_attn": OptionInfo(False, "Upcast cross attention layer to float32"),
+    "default_clip_target_token_count": OptionInfo(75, "Default clip token target count, before loading a sd model"),
     "randn_source": OptionInfo("GPU", "Random number generator source.", gr.Radio, {"choices": ["GPU", "CPU"]}).info("changes seeds drastically; use CPU to produce the same picture across different videocard vendors"),
 }))
 
@@ -647,10 +717,10 @@ class Options:
         return data_label.default
 
     def save(self, filename):
-        assert not cmd_opts.freeze_settings, "saving settings is disabled"
-
-        with open(filename, "w", encoding="utf8") as file:
-            json.dump(self.data, file, indent=4)
+        # assert not cmd_opts.freeze_settings, "saving settings is disabled"
+        # with open(filename, "w", encoding="utf8") as file:
+        #     json.dump(self.data, file, indent=4)
+        pass
 
     def same_type(self, x, y):
         if x is None or y is None:
@@ -856,6 +926,12 @@ def listfiles(dirname):
 def html_path(filename):
     return os.path.join(script_path, "html", filename)
 
+def list_extension_html(dirpath, filename):
+    path = os.path.join(script_path, dirpath, filename)
+    if os.path.exists(path):
+        with open(path, encoding="utf8") as file:
+            return file.read()
+    return ""
 
 def html(filename):
     path = html_path(filename)

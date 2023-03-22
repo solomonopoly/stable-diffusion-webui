@@ -460,4 +460,5 @@ loaded_networks = []
 available_network_hash_lookup = {}
 forbidden_network_aliases = {}
 
-list_available_networks()
+if not shared.cmd_opts.skip_load_default_model:
+    list_available_networks()

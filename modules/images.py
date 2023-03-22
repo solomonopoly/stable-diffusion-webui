@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import uuid
 
 import pytz
 import io
@@ -381,6 +382,8 @@ class FilenameGenerator:
         'user': lambda self: self.p.user,
         'vae_filename': lambda self: self.get_vae_filename(),
         'none': lambda self: '', # Overrides the default so you can get just the sequence number
+        'uuid': lambda self: uuid.uuid4().hex,
+
     }
     default_time_format = '%Y%m%d%H%M%S'
 
@@ -412,7 +415,7 @@ class FilenameGenerator:
             return None
 
         prompt_no_style = self.prompt
-        for style in shared.prompt_styles.get_style_prompts(self.p.styles):
+        for style in self.p.global_prompt_styles().get_style_prompts(self.p.styles):
             if style:
                 for part in style.split("{prompt}"):
                     prompt_no_style = prompt_no_style.replace(part, "").replace(", ,", ",").strip().strip(',')

@@ -3,6 +3,7 @@ import re
 import sys
 import inspect
 from collections import namedtuple
+import traceback
 
 import gradio as gr
 
@@ -88,6 +89,16 @@ class Script:
     def before_process(self, p, *args):
         """
         This function is called very early before processing begins for AlwaysVisible scripts.
+        You can modify the processing object (p) here, inject hooks, etc.
+        args contains all values returned by components from ui()
+        """
+
+        pass
+
+    # Defined by Diffus Team
+    def preprocess(self, p, *args):
+        """
+        This function is called at the very beginning of process function for AlwaysVisible scripts.
         You can modify the processing object (p) here, inject hooks, etc.
         args contains all values returned by components from ui()
         """
@@ -280,10 +291,14 @@ def load_scripts():
 
     def orderby(basedir):
         # 1st webui, 2nd extensions-builtin, 3rd extensions
-        priority = {os.path.join(paths.script_path, "extensions-builtin"):1, paths.script_path:0}
-        for key in priority:
-            if basedir.startswith(key):
-                return priority[key]
+        priority = [
+            os.path.join(paths.script_path, "extensions"),
+            os.path.join(paths.script_path, "extensions-builtin"),
+            paths.script_path
+        ]
+        for i in range(len(priority)):
+            if basedir.startswith(priority[i]):
+                return len(priority) - i
         return 9999
 
     for scriptfile in sorted(scripts_list, key=lambda x: [orderby(x.basedir), x]):
@@ -487,6 +502,16 @@ class ScriptRunner:
                 script.before_process(p, *script_args)
             except Exception:
                 errors.report(f"Error running before_process: {script.filename}", exc_info=True)
+
+    # Defined by Diffus Team
+    def preprocess(self, p):
+        for script in self.alwayson_scripts:
+            try:
+                script_args = p.script_args[script.args_from:script.args_to]
+                script.preprocess(p, *script_args)
+            except Exception:
+                print(f"Error running preprocess: {script.filename}", file=sys.stderr)
+                print(traceback.format_exc(), file=sys.stderr)
 
     def process(self, p):
         for script in self.alwayson_scripts:
