@@ -15,12 +15,19 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from packaging import version
+from concurrent.futures import ThreadPoolExecutor
 
 import logging
+
+from modules.api.daemon_api import DaemonApi
+from modules.cache import use_sdd_to_cache_remote_file, setup_remote_file_cache
+from modules.lru_cache import LruCache
 
 logging.getLogger("xformers").addFilter(lambda record: 'A matching Triton is not available' not in record.getMessage())
 
 from modules import paths, timer, import_hook, errors, devices  # noqa: F401
+from modules.paths_internal import data_path
+from modules.state_holder import make_state_holder
 
 startup_timer = timer.startup_timer
 
@@ -32,14 +39,19 @@ warnings.filterwarnings(action="ignore", category=UserWarning, module="torchvisi
 
 startup_timer.record("import torch")
 
+import safetensors.torch
+
 import gradio
 startup_timer.record("import gradio")
 
 import ldm.modules.encoders.modules  # noqa: F401
 startup_timer.record("import ldm")
 
-from modules import extra_networks
-from modules.call_queue import wrap_gradio_gpu_call, wrap_queued_call, queue_lock  # noqa: F401
+from modules import extra_networks, ui_extra_networks_checkpoints
+from modules import extra_networks_hypernet, ui_extra_networks_hypernets, ui_extra_networks_textual_inversion
+from modules import call_queue
+from modules.call_queue import submit_to_gpu_worker, wrap_gradio_gpu_call, queue_lock  # noqa: F401
+from modules.ui_common import add_static_filedir_to_demo
 
 # Truncate version number of nightly/local build of PyTorch to not cause exceptions with CodeFormer or Safetensors
 if ".dev" in torch.__version__ or "+git" in torch.__version__:
@@ -70,6 +82,8 @@ from modules.shared import cmd_opts
 import modules.hypernetworks.hypernetwork
 
 startup_timer.record("other imports")
+
+MAX_ANYIO_WORKER_THREAD = 64
 
 
 if cmd_opts.server_name:
@@ -223,16 +237,35 @@ def configure_sigint_handler():
 
 
 def configure_opts_onchange():
-    shared.opts.onchange("sd_model_checkpoint", wrap_queued_call(lambda: modules.sd_models.reload_model_weights()), call=False)
-    shared.opts.onchange("sd_vae", wrap_queued_call(lambda: modules.sd_vae.reload_vae_weights()), call=False)
-    shared.opts.onchange("sd_vae_as_default", wrap_queued_call(lambda: modules.sd_vae.reload_vae_weights()), call=False)
+    #shared.opts.onchange("sd_model_checkpoint", submit_to_gpu_worker(lambda: modules.sd_models.reload_model_weights()), call=False)
+    #shared.opts.onchange("sd_vae", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
+    #shared.opts.onchange("sd_vae_as_default", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
     shared.opts.onchange("temp_dir", ui_tempdir.on_tmpdir_changed)
     shared.opts.onchange("gradio_theme", shared.reload_gradio_theme)
-    shared.opts.onchange("cross_attention_optimization", wrap_queued_call(lambda: modules.sd_hijack.model_hijack.redo_hijack(shared.sd_model)), call=False)
+    shared.opts.onchange("cross_attention_optimization", submit_to_gpu_worker(lambda: modules.sd_hijack.model_hijack.redo_hijack(shared.sd_model)), call=False)
     startup_timer.record("opts onchange")
 
 
 def initialize():
+    call_queue.gpu_worker_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu_worker_")
+    file_mover_worker_pool = ThreadPoolExecutor(thread_name_prefix="file_mover_threads_")
+    lru_cache = LruCache()
+    setup_remote_file_cache(lru_cache, cmd_opts.model_cache_dir)
+    torch.load = use_sdd_to_cache_remote_file(
+        torch.load,
+        lru_cache,
+        data_path,
+        cmd_opts.model_cache_dir,
+        file_mover_worker_pool,
+        cache_size_gb=cmd_opts.model_cache_max_size)
+    safetensors.torch.load_file = use_sdd_to_cache_remote_file(
+        safetensors.torch.load_file,
+        lru_cache,
+        data_path,
+        cmd_opts.model_cache_dir,
+        file_mover_worker_pool,
+        cache_size_gb=cmd_opts.model_cache_max_size)
+
     fix_asyncio_event_loop_policy()
     validate_tls_options()
     configure_sigint_handler()
@@ -275,6 +308,10 @@ def initialize_rest(*, reload_script_modules=False):
     with startup_timer.subcategory("load scripts"):
         modules.scripts.load_scripts()
 
+    #modelloader.forbid_loaded_nonbuiltin_upscalers()
+    #modules.script_callbacks.model_loaded_callback(shared.sd_model)
+    #startup_timer.record("model loaded callback")
+
     if reload_script_modules:
         for module in [module for name, module in sys.modules.items() if name.startswith("modules.ui")]:
             importlib.reload(module)
@@ -295,20 +332,21 @@ def initialize_rest(*, reload_script_modules=False):
     modules.sd_unet.list_unets()
     startup_timer.record("scripts list_unets")
 
-    def load_model():
-        """
-        Accesses shared.sd_model property to load model.
-        After it's available, if it has been loaded before this access by some extension,
-        its optimization may be None because the list of optimizaers has neet been filled
-        by that time, so we apply optimization again.
-        """
+    if not cmd_opts.skip_load_default_model:
+        def load_model():
+            """
+            Accesses shared.sd_model property to load model.
+            After it's available, if it has been loaded before this access by some extension,
+            its optimization may be None because the list of optimizaers has neet been filled
+            by that time, so we apply optimization again.
+            """
+            shared.sd_model  # noqa: B018
 
-        shared.sd_model  # noqa: B018
+            if modules.sd_hijack.current_optimizer is None:
+                modules.sd_hijack.apply_optimizations()
 
-        if modules.sd_hijack.current_optimizer is None:
-            modules.sd_hijack.apply_optimizations()
-
-    Thread(target=load_model).start()
+        # submit_to_gpu_worker(load_model)
+        Thread(target=load_model).start()
 
     Thread(target=devices.first_time_calculation).start()
 
@@ -345,21 +383,28 @@ def configure_cors_middleware(app):
 
 def create_api(app):
     from modules.api.api import Api
-    api = Api(app, queue_lock)
+    api = Api(app, submit_to_gpu_worker)
     return api
 
 
-def api_only():
+def api_only(server_port: int = 0):
     initialize()
 
     app = FastAPI()
+    make_state_holder(app)
     setup_middleware(app)
     api = create_api(app)
+    DaemonApi(app)
 
     modules.script_callbacks.app_started_callback(None, app)
 
     print(f"Startup time: {startup_timer.summary()}.")
-    api.launch(server_name="0.0.0.0" if cmd_opts.listen else "127.0.0.1", port=cmd_opts.port if cmd_opts.port else 7861)
+    if not server_port:
+        server_port = cmd_opts.port if cmd_opts.port else 7861
+    api.launch(
+        server_name="0.0.0.0" if cmd_opts.listen else "127.0.0.1",
+        port=server_port,
+        max_threads=MAX_ANYIO_WORKER_THREAD)
 
 
 def stop_route(request):
@@ -367,9 +412,12 @@ def stop_route(request):
     return Response("Stopping.")
 
 
-def webui():
+def webui(server_port: int = 0):
     launch_api = cmd_opts.api
     initialize()
+    if not server_port:
+        server_port = cmd_opts.port if cmd_opts.port else 7861
+    shared.state.server_port = server_port
 
     while 1:
         if shared.opts.clean_temp_dir_at_start:
@@ -383,14 +431,14 @@ def webui():
         startup_timer.record("create ui")
 
         if not cmd_opts.no_gradio_queue:
-            shared.demo.queue(64)
+            shared.demo.queue(MAX_ANYIO_WORKER_THREAD)
 
         gradio_auth_creds = list(get_gradio_auth_creds()) or None
 
         app, local_url, share_url = shared.demo.launch(
             share=cmd_opts.share,
             server_name=server_name,
-            server_port=cmd_opts.port,
+            server_port=server_port,
             ssl_keyfile=cmd_opts.tls_keyfile,
             ssl_certfile=cmd_opts.tls_certfile,
             ssl_verify=cmd_opts.disable_tls_verify,
@@ -399,11 +447,13 @@ def webui():
             inbrowser=cmd_opts.autolaunch and os.getenv('SD_WEBUI_RESTARTING ') != '1',
             prevent_thread_lock=True,
             allowed_paths=cmd_opts.gradio_allowed_path,
+            max_threads=MAX_ANYIO_WORKER_THREAD,
             app_kwargs={
                 "docs_url": "/docs",
                 "redoc_url": "/redoc",
             },
         )
+        make_state_holder(app)
         if cmd_opts.add_stop_route:
             app.add_route("/_stop", stop_route, methods=["POST"])
 
@@ -425,7 +475,9 @@ def webui():
 
         if launch_api:
             create_api(app)
+        DaemonApi(app)
 
+        add_static_filedir_to_demo(app, route="components")
         ui_extra_networks.add_pages_to_demo(app)
 
         startup_timer.record("add APIs")
@@ -435,6 +487,10 @@ def webui():
 
         timer.startup_record = startup_timer.dump()
         print(f"Startup time: {startup_timer.summary()}.")
+
+        @app.on_event("shutdown")
+        def shutdown_event():
+            gradio.close_all()
 
         if cmd_opts.subpath:
             redirector = FastAPI()
@@ -469,6 +525,13 @@ def webui():
         startup_timer.record("scripts unloaded callback")
         initialize_rest(reload_script_modules=True)
 
+        modules.script_callbacks.on_list_optimizers(modules.sd_hijack_optimizations.list_optimizers)
+        modules.sd_hijack.list_optimizers()
+        startup_timer.record("scripts list_optimizers")
+
+        # disable auto restart
+        if cmd_opts.disable_auto_restart:
+            break
 
 if __name__ == "__main__":
     if cmd_opts.nowebui:

@@ -11,6 +11,7 @@ from omegaconf import OmegaConf
 from os import mkdir
 from urllib import request
 import ldm.modules.midas as midas
+import gradio as gr
 
 from ldm.util import instantiate_from_config
 
@@ -64,9 +65,11 @@ class CheckpointInfo:
                 errors.display(e, f"reading checkpoint metadata: {filename}")
 
     def register(self):
-        checkpoints_list[self.title] = self
+        if self.title not in checkpoints_list:
+            checkpoints_list[self.title] = self
         for id in self.ids:
-            checkpoint_alisases[id] = self
+            if id not in checkpoint_alisases:
+                checkpoint_alisases[id] = self
 
     def calculate_shorthash(self):
         self.sha256 = hashes.sha256(self.filename, f"checkpoint/{self.name}")
@@ -98,10 +101,11 @@ def setup_model():
     if not os.path.exists(model_path):
         os.makedirs(model_path)
 
+    # list_models()
     enable_midas_autodownload()
 
 
-def checkpoint_tiles():
+def checkpoint_tiles(req: gr.Request = None):
     def convert(name):
         return int(name) if name.isdigit() else name.lower()
 
@@ -111,9 +115,9 @@ def checkpoint_tiles():
     return sorted([x.title for x in checkpoints_list.values()], key=alphanumeric_key)
 
 
-def list_models():
-    checkpoints_list.clear()
-    checkpoint_alisases.clear()
+def list_models(req: gr.Request = None):
+    # checkpoints_list.clear()
+    # checkpoint_alisases.clear()
 
     cmd_ckpt = shared.cmd_opts.ckpt
     if shared.cmd_opts.no_download_sd_model or cmd_ckpt != shared.sd_model_file or os.path.exists(cmd_ckpt):
@@ -436,7 +440,7 @@ class SdModelData:
 model_data = SdModelData()
 
 
-def load_model(checkpoint_info=None, already_loaded_state_dict=None):
+def load_model(checkpoint_info=None, already_loaded_state_dict=None, time_taken_to_load_state_dict=None):
     from modules import lowvram, sd_hijack
     checkpoint_info = checkpoint_info or select_checkpoint()
 
@@ -448,7 +452,7 @@ def load_model(checkpoint_info=None, already_loaded_state_dict=None):
 
     do_inpainting_hijack()
 
-    timer = Timer()
+    timer = Timer('sd_models.load_model', checkpoint_info.title)
 
     if already_loaded_state_dict is not None:
         state_dict = already_loaded_state_dict
@@ -540,7 +544,7 @@ def reload_model_weights(sd_model=None, info=None):
 
         sd_hijack.model_hijack.undo_hijack(sd_model)
 
-    timer = Timer()
+    timer = Timer('sd_models.reload_model_weights')
 
     state_dict = get_checkpoint_state_dict(checkpoint_info, timer)
 
@@ -577,7 +581,7 @@ def reload_model_weights(sd_model=None, info=None):
 
 def unload_model_weights(sd_model=None, info=None):
     from modules import devices, sd_hijack
-    timer = Timer()
+    timer = Timer('sd_model.unload_model_weights')
 
     if model_data.sd_model:
         model_data.sd_model.to(devices.cpu)

@@ -2,16 +2,24 @@ import gradio as gr
 
 from modules import ui_common, shared, script_callbacks, scripts, sd_models, sysinfo
 from modules.call_queue import wrap_gradio_call
+import modules.call_utils
 from modules.shared import opts
 from modules.ui_components import FormRow
 from modules.ui_gradio_extensions import reload_javascript
 
 
-def get_value_for_setting(key):
+def get_value_for_setting(key, request: gr.Request = None):
     value = getattr(opts, key)
 
     info = opts.data_labels[key]
-    args = info.component_args() if callable(info.component_args) else info.component_args or {}
+    if callable(info.component_args):
+        inputs = modules.call_utils.special_args(info.component_args, [], request)
+        if inputs:
+            args = info.component_args(*inputs)
+        else:
+            args = info.component_args()
+    else:
+        args = info.component_args or {}
     args = {k: v for k, v in args.items() if k not in {'precision'}}
 
     return gr.update(value=value, **args)
@@ -41,7 +49,7 @@ def create_setting_component(key, is_quicksettings=False):
 
     if info.refresh is not None:
         if is_quicksettings:
-            res = comp(label=info.label, value=fun(), elem_id=elem_id, **(args or {}))
+            res = comp(label=info.label, value=fun(), elem_id=elem_id, elem_classes="quicksettings", **(args or {}))
             ui_common.create_refresh_button(res, info.refresh, info.component_args, f"refresh_{key}")
         else:
             with FormRow():
@@ -63,8 +71,21 @@ class UiSettings:
     quicksettings_list = None
     quicksettings_names = None
     text_settings = None
+    txt2img_model_title = None
+    img2img_model_title = None
+    txt2img_vae_title = None
+    img2img_vae_title = None
 
-    def run_settings(self, *args):
+    def __init__(self, txt2img_model_title, img2img_model_title, txt2img_vae_title, img2img_vae_title):
+        self.txt2img_model_title = txt2img_model_title
+        self.img2img_model_title = img2img_model_title
+        self.txt2img_vae_title = txt2img_vae_title
+        self.img2img_vae_title = img2img_vae_title
+
+    def run_settings(self, request: gr.Request, *args):
+        import modules.call_utils
+        modules.call_utils.check_insecure_calls()
+
         changed = []
 
         for key, value, comp in zip(opts.data_labels.keys(), args, self.components):
@@ -83,16 +104,20 @@ class UiSettings:
             return opts.dumpjson(), f'{len(changed)} settings changed without save: {", ".join(changed)}.'
         return opts.dumpjson(), f'{len(changed)} settings changed{": " if changed else ""}{", ".join(changed)}.'
 
-    def run_settings_single(self, value, key):
+    def run_settings_single(self, request: gr.Request, value, key):
         if not opts.same_type(value, opts.data_labels[key].default):
-            return gr.update(visible=True), opts.dumpjson()
+            return gr.update(visible=True), opts.dumpjson(), value, value
 
         if not opts.set(key, value):
-            return gr.update(value=getattr(opts, key)), opts.dumpjson()
+            # the returned extra two values are used to tell img2img/txt2img current loaded model
+            return gr.update(value=getattr(opts, key)), opts.dumpjson(), value, value
+            #return gr.update(value=getattr(opts, key)), opts.dumpjson()
 
         opts.save(shared.config_filename)
 
-        return get_value_for_setting(key), opts.dumpjson()
+        # the returned extra two values are used to tell img2img/txt2img current loaded model
+        return get_value_for_setting(key, request), opts.dumpjson(), value, value
+        #return get_value_for_setting(key), opts.dumpjson()
 
     def create_ui(self, loadsave, dummy_component):
         self.components = []
@@ -256,30 +281,44 @@ class UiSettings:
             outputs=[self.text_settings, self.result],
         )
 
+        def make_run_settings_single(key):
+            def f(request: gr.Request, value, _=None):
+                return self.run_settings_single(request, value, key)
+            return f
+
         for _i, k, _item in self.quicksettings_list:
             component = self.component_dict[k]
             info = opts.data_labels[k]
+            if k == 'sd_model_checkpoint':
+                outputs = [component, self.text_settings, self.txt2img_model_title, self.img2img_model_title]
+            elif k == 'sd_vae':
+                outputs = [component, self.text_settings, self.txt2img_vae_title, self.img2img_vae_title]
+            else:
+                outputs = [component, self.text_settings, self.dummy_component, self.dummy_component]
 
             change_handler = component.release if hasattr(component, 'release') else component.change
             change_handler(
-                fn=lambda value, k=k: self.run_settings_single(value, key=k),
+                fn=make_run_settings_single(k),
                 inputs=[component],
-                outputs=[component, self.text_settings],
+                outputs=outputs,
                 show_progress=info.refresh is not None,
             )
 
         button_set_checkpoint = gr.Button('Change checkpoint', elem_id='change_checkpoint', visible=False)
         button_set_checkpoint.click(
-            fn=lambda value, _: self.run_settings_single(value, key='sd_model_checkpoint'),
+            fn=make_run_settings_single('sd_model_checkpoint'),
             _js="function(v){ var res = desiredCheckpointName; desiredCheckpointName = ''; return [res || v, null]; }",
             inputs=[self.component_dict['sd_model_checkpoint'], self.dummy_component],
-            outputs=[self.component_dict['sd_model_checkpoint'], self.text_settings],
+            outputs=[self.component_dict['sd_model_checkpoint'],
+                     self.text_settings,
+                     self.txt2img_model_title,
+                     self.img2img_model_title],
         )
 
         component_keys = [k for k in opts.data_labels.keys() if k in self.component_dict]
 
-        def get_settings_values():
-            return [get_value_for_setting(key) for key in component_keys]
+        def get_settings_values(request: gr.Request):
+            return [get_value_for_setting(key, request) for key in component_keys]
 
         demo.load(
             fn=get_settings_values,
