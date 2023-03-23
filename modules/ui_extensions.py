@@ -11,6 +11,8 @@ import html
 import shutil
 import errno
 
+import gradio.routes
+
 from modules import extensions, shared, paths
 from modules.call_queue import wrap_gradio_gpu_call
 
@@ -50,7 +52,7 @@ def apply_and_restart(disable_list, update_list, disable_all):
     shared.state.need_restart = True
 
 
-def check_updates(id_task, disable_list):
+def check_updates(request: gradio.routes.Request, id_task, disable_list):
     check_access()
 
     disabled = json.loads(disable_list)
@@ -129,7 +131,7 @@ def normalize_git_url(url):
     return url
 
 
-def install_extension_from_url(dirname, url):
+def install_extension_from_url(request: gradio.routes.Request, dirname, url):
     check_access()
 
     assert url, 'No URL specified'
@@ -174,7 +176,7 @@ def install_extension_from_url(dirname, url):
         shutil.rmtree(tmpdir, True)
 
 
-def install_extension_from_index(url, hide_tags, sort_column, filter_text):
+def install_extension_from_index(request: gradio.routes.Request, url, hide_tags, sort_column, filter_text):
     ext_table, message = install_extension_from_url(None, url)
 
     code, _ = refresh_available_extensions_from_data(hide_tags, sort_column, filter_text)
@@ -182,7 +184,7 @@ def install_extension_from_index(url, hide_tags, sort_column, filter_text):
     return code, ext_table, message, ''
 
 
-def refresh_available_extensions(url, hide_tags, sort_column):
+def refresh_available_extensions(request: gradio.routes.Request, url, hide_tags, sort_column):
     global available_extensions
 
     import urllib.request
@@ -196,7 +198,7 @@ def refresh_available_extensions(url, hide_tags, sort_column):
     return url, code, gr.CheckboxGroup.update(choices=tags), '', ''
 
 
-def refresh_available_extensions_for_tags(hide_tags, sort_column, filter_text):
+def refresh_available_extensions_for_tags(request: gradio.routes.Request, hide_tags, sort_column, filter_text):
     code, _ = refresh_available_extensions_from_data(hide_tags, sort_column, filter_text)
 
     return code, ''
@@ -272,7 +274,7 @@ def refresh_available_extensions_from_data(hide_tags, sort_column, filter_text="
                 <td>{html.escape(description)}<p class="info"><span class="date_added">Added: {html.escape(added)}</span></p></td>
                 <td>{install_code}</td>
             </tr>
-        
+
         """
 
         for tag in [x for x in extension_tags if x not in tags]:
@@ -338,9 +340,9 @@ def create_ui():
                     hide_tags = gr.CheckboxGroup(value=["ads", "localization", "installed"], label="Hide extensions with tags", choices=["script", "ads", "localization", "installed"])
                     sort_column = gr.Radio(value="newest first", label="Order", choices=["newest first", "oldest first", "a-z", "z-a", "internal order", ], type="index")
 
-                with gr.Row(): 
+                with gr.Row():
                     search_extensions_text = gr.Text(label="Search").style(container=False)
-                   
+
                 install_result = gr.HTML()
                 available_extensions_table = gr.HTML()
 
