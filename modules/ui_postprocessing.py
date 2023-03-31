@@ -29,7 +29,7 @@ def create_ui():
 
     tab_single.select(fn=lambda: 0, inputs=[], outputs=[tab_index])
     tab_batch.select(fn=lambda: 1, inputs=[], outputs=[tab_index])
-    tab_batch_dir.select(fn=lambda: 2, inputs=[], outputs=[tab_index])
+    # tab_batch_dir.select(fn=lambda: 2, inputs=[], outputs=[tab_index])
 
     submit.click(
         fn=call_queue.wrap_gradio_gpu_call(postprocessing.run_postprocessing, extra_outputs=[None, '']),
@@ -37,9 +37,9 @@ def create_ui():
             tab_index,
             extras_image,
             image_batch,
-            extras_batch_input_dir,
-            extras_batch_output_dir,
-            show_extras_results,
+            # extras_batch_input_dir,
+            # extras_batch_output_dir,
+            # show_extras_results,
             *script_inputs
         ],
         outputs=[
