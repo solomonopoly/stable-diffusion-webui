@@ -1935,7 +1935,6 @@ def create_ui():
 
     try:
         if os.path.exists(ui_config_file):
-            import json
             with open(ui_config_file, "r", encoding="utf8") as file:
                 import json
                 ui_settings = json.load(file)
@@ -2019,7 +2018,6 @@ def create_ui():
     loadsave(f"webui/Tabs@{tabs.elem_id}", tabs)
 
     if not error_loading and (not os.path.exists(ui_config_file) or settings_count != len(ui_settings)):
-        import json
         with open(ui_config_file, "w", encoding="utf8") as file:
             json.dump(ui_settings, file, indent=4)
 
