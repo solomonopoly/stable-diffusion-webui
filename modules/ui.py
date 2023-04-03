@@ -1702,7 +1702,7 @@ def create_ui():
                           "src=''"
                           "=s96-c' /></a><div class='user_info-name'><span></span><a "
                           "href='/api/logout' target='_self'>logout</a></div></div>",
-                    show_label=False, elem_id="user-setting_content")
+                    show_label=False)
         parameters_copypaste.connect_paste_params_buttons()
 
         with gr.Tabs(elem_id="tabs") as tabs:
