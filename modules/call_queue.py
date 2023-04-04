@@ -56,12 +56,14 @@ def wrap_gradio_gpu_call(func, func_name: str = '', extra_outputs=None):
                 res = func(request, *args, **kwargs)
                 progress.record_results(id_task, res)
                 status = 'finished'
+                log_message = 'done'
             except Exception as e:
                 status = 'failed'
+                log_message = e.__str__()
                 raise e
             finally:
                 progress.finish_task(id_task)
-                modules.system_monitor.on_task_finished(request, monitor_log_id, status)
+                modules.system_monitor.on_task_finished(request, monitor_log_id, status, log_message)
 
             shared.state.end()
 
