@@ -488,6 +488,8 @@ def create_ui():
 
     with gr.Blocks(analytics_enabled=False) as txt2img_interface:
         txt2img_prompt, txt2img_prompt_styles, txt2img_negative_prompt, submit, _, _, txt2img_prompt_style_apply, txt2img_save_style, txt2img_paste, extra_networks_button, token_counter, token_button, negative_token_counter, negative_token_button, restore_progress_button, txt2img_model_title = create_toprow(is_img2img=False)
+        need_upgrade = gr.Checkbox(
+            value=False, interactive=False, visible=False, elem_classes="upgrade_checkbox")
 
         dummy_component = gr.Label(visible=False)
         txt_prompt_img = gr.File(label="", elem_id="txt2img_prompt_image", file_count="single", type="binary", visible=False)
@@ -577,7 +579,8 @@ def create_ui():
             connect_reuse_seed(subseed, reuse_subseed, generation_info, dummy_component, is_subseed=True)
 
             txt2img_args = dict(
-                fn=wrap_gradio_gpu_call(modules.txt2img.txt2img, func_name='txt2img', extra_outputs=[None, '', '']),
+                fn=wrap_gradio_gpu_call(
+                    modules.txt2img.txt2img, func_name='txt2img', extra_outputs=[None, '', ''], add_monitor_state=True),
                 _js="submit",
                 inputs=[
                     dummy_component,
@@ -610,12 +613,15 @@ def create_ui():
                     generation_info,
                     html_info,
                     html_log,
+                    need_upgrade
                 ],
                 show_progress=False,
             )
 
             txt2img_prompt.submit(**txt2img_args)
             submit.click(**txt2img_args)
+
+            need_upgrade.change(None, [need_upgrade], None, _js="redirect_to_payment")
 
             res_switch_btn.click(lambda w, h: (h, w), inputs=[width, height], outputs=[width, height], show_progress=False)
 
@@ -701,6 +707,8 @@ def create_ui():
 
     with gr.Blocks(analytics_enabled=False) as img2img_interface:
         img2img_prompt, img2img_prompt_styles, img2img_negative_prompt, submit, img2img_interrogate, img2img_deepbooru, img2img_prompt_style_apply, img2img_save_style, img2img_paste, extra_networks_button, token_counter, token_button, negative_token_counter, negative_token_button, restore_progress_button, img2img_model_title = create_toprow(is_img2img=True)
+        img2img_need_upgrade = gr.Checkbox(
+            value=False, interactive=False, visible=False, elem_classes="upgrade_checkbox")
 
         img2img_prompt_img = gr.File(label="", elem_id="img2img_prompt_image", file_count="single", type="binary", visible=False)
 
@@ -925,7 +933,8 @@ def create_ui():
             )
 
             img2img_args = dict(
-                fn=wrap_gradio_gpu_call(modules.img2img.img2img, func_name='img2img', extra_outputs=[None, '', '']),
+                fn=wrap_gradio_gpu_call(
+                    modules.img2img.img2img, func_name='img2img', extra_outputs=[None, '', ''], add_monitor_state=True),
                 _js="submit_img2img",
                 inputs=[
                     dummy_component,
@@ -972,6 +981,7 @@ def create_ui():
                     generation_info,
                     html_info,
                     html_log,
+                    need_upgrade
                 ],
                 show_progress=False,
             )
@@ -1356,7 +1366,8 @@ def create_ui():
         )
 
         run_preprocess.click(
-            fn=wrap_gradio_gpu_call(modules.textual_inversion.ui.preprocess, extra_outputs=[gr.update()]),
+            fn=wrap_gradio_gpu_call(
+                modules.textual_inversion.ui.preprocess, extra_outputs=[gr.update()], add_monitor_state=True),
             _js="start_training_textual_inversion",
             inputs=[
                 dummy_component,
@@ -1388,11 +1399,13 @@ def create_ui():
             outputs=[
                 ti_output,
                 ti_outcome,
+                need_upgrade
             ],
         )
 
         train_embedding.click(
-            fn=wrap_gradio_gpu_call(modules.textual_inversion.ui.train_embedding, extra_outputs=[gr.update()]),
+            fn=wrap_gradio_gpu_call(
+                modules.textual_inversion.ui.train_embedding, extra_outputs=[gr.update()], add_monitor_state=True),
             _js="start_training_textual_inversion",
             inputs=[
                 dummy_component,
@@ -1422,11 +1435,13 @@ def create_ui():
             outputs=[
                 ti_output,
                 ti_outcome,
+                need_upgrade
             ]
         )
 
         train_hypernetwork.click(
-            fn=wrap_gradio_gpu_call(modules.hypernetworks.ui.train_hypernetwork, extra_outputs=[gr.update()]),
+            fn=wrap_gradio_gpu_call(
+                modules.hypernetworks.ui.train_hypernetwork, extra_outputs=[gr.update()], add_monitor_state=True),
             _js="start_training_textual_inversion",
             inputs=[
                 dummy_component,
@@ -1455,6 +1470,7 @@ def create_ui():
             outputs=[
                 ti_output,
                 ti_outcome,
+                need_upgrade
             ]
         )
 
@@ -1780,7 +1796,8 @@ def create_ui():
 
         modelmerger_merge.click(fn=lambda: '', inputs=[], outputs=[modelmerger_result])
         modelmerger_merge.click(
-            fn=wrap_gradio_gpu_call(modelmerger, extra_outputs=lambda: [gr.update() for _ in range(4)]),
+            fn=wrap_gradio_gpu_call(
+                modelmerger, extra_outputs=lambda: [gr.update() for _ in range(4)], add_monitor_state=True),
             _js='modelmerger',
             inputs=[
                 dummy_component,
@@ -1803,6 +1820,7 @@ def create_ui():
                 tertiary_model_name,
                 component_dict['sd_model_checkpoint'],
                 modelmerger_result,
+                need_upgrade
             ]
         )
 
