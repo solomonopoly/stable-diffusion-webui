@@ -11,22 +11,33 @@ import modules.shared as shared
 
 
 current_task = None
+current_task_step = ''
 pending_tasks = {}
 finished_tasks = []
 
 
 def start_task(id_task):
     global current_task
+    global current_task_step
 
     current_task = id_task
+    current_task_step = ''
+
     pending_tasks.pop(id_task, None)
+
+
+def set_current_task_step(step):
+    global current_task_step
+    current_task_step = step
 
 
 def finish_task(id_task):
     global current_task
+    global current_task_step
 
     if current_task == id_task:
         current_task = None
+        current_task_step = ''
 
     finished_tasks.append(id_task)
     if len(finished_tasks) > 16:
@@ -64,6 +75,9 @@ def progressapi(req: ProgressRequest):
 
     if not active:
         return ProgressResponse(active=active, queued=queued, completed=completed, id_live_preview=-1, textinfo="In queue..." if queued else "Waiting...")
+
+    if current_task_step == 'reload_model_weights':
+        return ProgressResponse(active=active, queued=queued, completed=completed, id_live_preview=-1, textinfo='Reloading model weights...')
 
     progress = 0
 
