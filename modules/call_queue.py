@@ -54,7 +54,9 @@ def wrap_gradio_gpu_call(func, func_name: str = '', extra_outputs=None, add_moni
 
             try:
                 if func_name in ('txt2img', 'img2img'):
+                    progress.set_current_task_step('reload_model_weights')
                     _check_sd_model(model_title=args[-1])
+                progress.set_current_task_step('inference')
                 res = func(request, *args, **kwargs)
                 progress.record_results(id_task, res)
                 status = 'finished'
