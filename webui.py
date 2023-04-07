@@ -1,4 +1,5 @@
 import os
+import memray
 import sys
 import time
 import importlib
@@ -136,16 +137,32 @@ def initialize():
     modules.textual_inversion.textual_inversion.list_textual_inversion_templates()
     startup_timer.record("refresh textual inversion templates")
 
-    try:
-        modules.sd_models.load_model()
-    except Exception as e:
-        errors.display(e, "loading stable diffusion model")
-        print("", file=sys.stderr)
-        print("Stable diffusion model failed to load, exiting", file=sys.stderr)
-        exit(1)
+    # try:
+    #     modules.sd_models.load_model()
+    # except Exception as e:
+    #     errors.display(e, "loading stable diffusion model")
+    #     print("", file=sys.stderr)
+    #     print("Stable diffusion model failed to load, exiting", file=sys.stderr)
+    #     exit(1)
+
     startup_timer.record("load SD checkpoint")
 
-    shared.opts.data["sd_model_checkpoint"] = shared.sd_model.sd_checkpoint_info.title
+    all_models = [
+        'ChilloutMix-ni-fp16.safetensors [59ffe2243a]',
+        'ChilloutMix-ni-fp16.safetensors [59ffe2243a]',
+        'deliberate_v2.safetensors [9aba26abdf]',
+        'meinamix_meinaV8.safetensors [30953ab0de]',
+        'realisticVisionV20_v20.safetensors [c0d1994c73]',
+        'v1-5-pruned-emaonly.safetensors [6ce0161689]',
+        'oldjourney_Lite.safetensors [361b88806a]'
+    ]
+
+    for model_title in all_models:
+        checkpoint = modules.sd_models.get_closet_checkpoint_match(model_title)
+        modules.sd_models.reload_model_weights(info=checkpoint)
+        modules.sd_models.unload_model_weights()
+
+    # shared.opts.data["sd_model_checkpoint"] = shared.sd_model.sd_checkpoint_info.title
 
     # do not reload checkpoint after setting updated, but load it before generating images
     # shared.opts.onchange("sd_model_checkpoint", wrap_queued_call(lambda: modules.sd_models.reload_model_weights()))

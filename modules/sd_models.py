@@ -321,7 +321,7 @@ def load_model_weights(model, checkpoint_info: CheckpointInfo, state_dict, timer
     model.sd_checkpoint_info = checkpoint_info
     shared.opts.data["sd_checkpoint_hash"] = checkpoint_info.sha256
 
-    model.logvar = model.logvar.to(devices.device)  # fix for training
+    # model.logvar = model.logvar.to(devices.device)  # fix for training
 
     sd_vae.delete_base_vae()
     sd_vae.clear_loaded_vae()
