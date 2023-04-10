@@ -58,6 +58,7 @@ import modules.ui
 from modules import modelloader
 from modules.shared import cmd_opts
 import modules.hypernetworks.hypernetwork
+import tracemalloc
 
 startup_timer.record("other imports")
 
@@ -233,6 +234,8 @@ def api_only():
 def webui():
     launch_api = cmd_opts.api
     initialize()
+
+    #tracemalloc.start()
 
     while 1:
         if shared.opts.clean_temp_dir_at_start:

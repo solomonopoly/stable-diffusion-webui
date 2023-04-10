@@ -5,6 +5,12 @@ import traceback
 import time
 
 import gradio.routes
+import anyio
+import asyncio
+import tracemalloc
+import threading
+import psutil
+import os
 
 import modules.system_monitor
 from modules import shared, progress
@@ -58,6 +64,7 @@ def wrap_gradio_gpu_call(func, func_name: str = '', extra_outputs=None, add_moni
                     _check_sd_model(model_title=args[-1])
                 progress.set_current_task_step('inference')
                 res = func(request, *args, **kwargs)
+                modules.sd_models.unload_model_weights()
                 status = 'finished'
                 log_message = 'done'
             except Exception as e:
@@ -79,6 +86,18 @@ def wrap_gradio_gpu_call(func, func_name: str = '', extra_outputs=None, add_moni
 
 def wrap_gradio_call(func, extra_outputs=None, add_stats=False, add_monitor_state=False):
     def f(request: gradio.routes.Request, *args, extra_outputs_array=extra_outputs, **kwargs):
+        #for task in asyncio.all_tasks():
+        #    print(f"asyncio: {task.get_name()} is {task.done()}")
+        #for task in anyio.get_running_tasks():
+        #    print(f"anyio: {task.name} is {task.coro}")
+        #size, peak = tracemalloc.get_traced_memory()
+        #print(f"Memmory usage: {size}. with peak {peak}")
+        print(f"Number of threads that are running: {threading.active_count()}")
+        print(f"Current thread id: {threading.get_native_id()}")
+        process = psutil.Process(os.getpid())
+        print(f"memory {process.memory_info().rss // 1000000} MB")
+        with open("./memory_records.txt", "a") as f:
+            print(process.memory_info().rss // 1000000, file=f)
         monitor_state = False
         run_memmon = shared.opts.memmon_poll_rate > 0 and not shared.mem_mon.disabled and add_stats
         if run_memmon:
@@ -153,6 +172,6 @@ def _check_sd_model(model_title):
     if not shared.sd_model or shared.sd_model.sd_checkpoint_info.title != model_title:
         import modules.sd_models
         # refresh model, unload it from memory to prevent OOM
-        modules.sd_models.unload_model_weights()
+        #modules.sd_models.unload_model_weights()
         checkpoint = modules.sd_models.get_closet_checkpoint_match(model_title)
         modules.sd_models.reload_model_weights(info=checkpoint)
