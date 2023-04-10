@@ -18,6 +18,10 @@ recorded_results = []
 recorded_results_limit = 2
 
 
+def get_task_queue_info():
+    return current_task, pending_tasks, finished_tasks
+
+
 def start_task(id_task):
     global current_task
     global current_task_step
