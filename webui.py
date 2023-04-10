@@ -148,19 +148,18 @@ def initialize():
     startup_timer.record("load SD checkpoint")
 
     all_models = [
-        'ChilloutMix-ni-fp16.safetensors [59ffe2243a]',
-        'ChilloutMix-ni-fp16.safetensors [59ffe2243a]',
-        'deliberate_v2.safetensors [9aba26abdf]',
-        'meinamix_meinaV8.safetensors [30953ab0de]',
-        'realisticVisionV20_v20.safetensors [c0d1994c73]',
-        'v1-5-pruned-emaonly.safetensors [6ce0161689]',
-        'oldjourney_Lite.safetensors [361b88806a]'
+        "chilloutmix_NiPrunedFp16Fix.safetensors [59ffe2243a]",
+        #"dreamlikeDiffusion10_10.ckpt [0aecbcfa2c]",
+        #"realdosmix_.safetensors [0d27c62ffa]",
+        #"realisticVisionV13_v13.safetensors [c35782bad8]",
+        #"v1-5-pruned-emaonly.safetensors [6ce0161689]",
     ]
 
-    for model_title in all_models:
-        checkpoint = modules.sd_models.get_closet_checkpoint_match(model_title)
-        modules.sd_models.reload_model_weights(info=checkpoint)
-        modules.sd_models.unload_model_weights()
+    with memray.Tracker("model_loading_012.bin"):
+        for model_title in all_models:
+            checkpoint = modules.sd_models.get_closet_checkpoint_match(model_title)
+            modules.sd_models.reload_model_weights(info=checkpoint)
+            modules.sd_models.unload_model_weights()
 
     # shared.opts.data["sd_model_checkpoint"] = shared.sd_model.sd_checkpoint_info.title
 

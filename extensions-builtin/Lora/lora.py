@@ -111,6 +111,7 @@ class LoraUpDownModule:
 
 
 def assign_lora_names_to_compvis_modules(sd_model):
+    import sys
     lora_layer_mapping = {}
 
     for name, module in shared.sd_model.cond_stage_model.wrapped.named_modules():

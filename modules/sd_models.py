@@ -156,7 +156,7 @@ def model_hash(filename):
 
 def select_checkpoint():
     model_checkpoint = shared.opts.sd_model_checkpoint
-        
+
     checkpoint_info = checkpoint_alisases.get(model_checkpoint, None)
     if checkpoint_info is not None:
         return checkpoint_info
@@ -363,7 +363,7 @@ def enable_midas_autodownload():
         if not os.path.exists(path):
             if not os.path.exists(midas_path):
                 mkdir(midas_path)
-    
+
             print(f"Downloading midas model weights for {model_type} to {path}")
             request.urlretrieve(midas_urls[model_type], path)
             print(f"{model_type} downloaded")
@@ -394,6 +394,26 @@ def repair_config(sd_config):
 
 sd1_clip_weight = 'cond_stage_model.transformer.text_model.embeddings.token_embedding.weight'
 sd2_clip_weight = 'cond_stage_model.model.transformer.resblocks.0.attn.in_proj_weight'
+
+def update_ref_count(obj_or_dict, ref_dict, location_mark):
+    do_not_alert = False if ref_dict else True
+    if isinstance(obj_or_dict, dict):
+        search_dict = obj_or_dict
+    else:
+        search_dict = obj_or_dict.__dict__
+    for key in search_dict:
+        if do_not_alert:
+            ref_dict[key] = sys.getrefcount(search_dict[key])
+            print(f"{location_mark} Init with new #{key}{type(search_dict[key])} with ref count: {ref_dict[key]}")
+        else:
+            if not key in ref_dict:
+                ref_dict[key] = sys.getrefcount(search_dict[key])
+                print(f"{location_mark} Add new #{key}{type(search_dict[key])} with ref count: {ref_dict[key]}")
+            else:
+                current_count = sys.getrefcount(search_dict[key])
+                if current_count != ref_dict[key]:
+                    print(f"{location_mark} Member #{key}{type(search_dict[key])} has changed ref: {current_count - ref_dict[key]}")
+                ref_dict[key] = current_count
 
 
 def load_model(checkpoint_info=None, already_loaded_state_dict=None, time_taken_to_load_state_dict=None):
@@ -428,9 +448,11 @@ def load_model(checkpoint_info=None, already_loaded_state_dict=None, time_taken_
     print(f"Creating model from config: {checkpoint_config}")
 
     sd_model = None
+    reference_count = dict()
     try:
         with sd_disable_initialization.DisableInitialization(disable_clip=clip_is_included_into_sd):
             sd_model = instantiate_from_config(sd_config.model)
+            update_ref_count(sd_model, reference_count, "##0")
     except Exception as e:
         pass
 
@@ -438,35 +460,67 @@ def load_model(checkpoint_info=None, already_loaded_state_dict=None, time_taken_
         print('Failed to create model quickly; will retry using slow method.', file=sys.stderr)
         sd_model = instantiate_from_config(sd_config.model)
 
+    print("++++++++++++++++++++++++++{sd_model_type}====================".format(sd_model_type=type(sd_model)))
     sd_model.used_config = checkpoint_config
+    update_ref_count(sd_model, reference_count, "##1")
 
     timer.record("create model")
 
     load_model_weights(sd_model, checkpoint_info, state_dict, timer)
+    update_ref_count(sd_model, reference_count, "##2")
 
     if shared.cmd_opts.lowvram or shared.cmd_opts.medvram:
         lowvram.setup_for_low_vram(sd_model, shared.cmd_opts.medvram)
     else:
+        print("++++++++++++++++++++++++++Device Type:{device_type}====================".format(device_type=shared.device))
+        print("sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
         sd_model.to(shared.device)
+        print("sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
+        update_ref_count(sd_model, reference_count, "##3")
 
     timer.record("move model to device")
 
     sd_hijack.model_hijack.hijack(sd_model)
+    print(shared.sd_model)
+    print("0# shared.sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(shared.sd_model)))
+    print("0# sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
+    update_ref_count(sd_model, reference_count, "##4")
 
     timer.record("hijack")
 
     sd_model.eval()
+    update_ref_count(sd_model, reference_count, "##5")
     shared.sd_model = sd_model
+    print("1# shared.sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(shared.sd_model)))
+    print("1# sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
+    update_ref_count(sd_model, reference_count, "##6")
 
     sd_hijack.model_hijack.embedding_db.load_textual_inversion_embeddings(force_reload=True)  # Reload embeddings after model load as they may or may not fit the model
+    print("2# shared.sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(shared.sd_model)))
+    print("2# sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
+    update_ref_count(sd_model, reference_count, "##7")
 
     timer.record("load textual inversion embeddings")
 
     script_callbacks.model_loaded_callback(sd_model)
+    print("3# shared.sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(shared.sd_model)))
+    print("3# sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
+    update_ref_count(sd_model, reference_count, "##8")
+    #for key in sd_model.lora_layer_mapping:
+    #    print(f"lora: {key}{type(sd_model.lora_layer_mapping[key])} with ref count: {sys.getrefcount(sd_model.lora_layer_mapping[key])}")
+    #for key in reference_count:
+    #    print(f"{key}{type(sd_model.__dict__[key])} ref count: {reference_count[key]}")
+    #for key in shared.sd_model.__dict__:
+    #    print(f"{key}{type(shared.sd_model.__dict__[key])} ref count: {sys.getrefcount(shared.sd_model.__dict__[key])}")
+    print(f"cond_stage_model has type: {type(shared.sd_model.cond_stage_model)}")
+    print(f"model has type: {type(shared.sd_model.model)}")
 
     timer.record("scripts callbacks")
 
     print(f"Model loaded in {timer.summary()}.")
+    sd_model = None
+    print("4# shared.sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(shared.sd_model)))
+    print("4# sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
 
     return sd_model
 
@@ -533,15 +587,85 @@ def unload_model_weights(sd_model=None, info=None):
 
     if shared.sd_model:
 
+        buffer_reference_count = dict()
+        modules_reference_count = dict()
+        lora_reference_count = dict()
+        module_model_reference_count = dict()
         # shared.sd_model.cond_stage_model.to(devices.cpu)
         # shared.sd_model.first_stage_model.to(devices.cpu)
-        shared.sd_model.to(devices.cpu)
+        #shared.sd_model.to(devices.cpu)
+        print("5# shared.sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(shared.sd_model)))
+        print("5# sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
         sd_hijack.model_hijack.undo_hijack(shared.sd_model)
+        print("6# shared.sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(shared.sd_model)))
+        print("6# sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
+        #update_ref_count(shared.sd_model._buffers, buffer_reference_count, "**1")
+        update_ref_count(shared.sd_model._modules, modules_reference_count, "**2")
+        # update_ref_count(shared.sd_model.model, module_model_reference_count, "**2model")
+        for name, module in shared.sd_model.cond_stage_model.named_modules():
+            lora_name = name.replace(".", "_")
+            print(f"{name}: {lora_name} ref count: {sys.getrefcount(module)}. In lora: {lora_name in shared.sd_model.lora_layer_mapping and module is shared.sd_model.lora_layer_mapping[lora_name]}")
+            if lora_name in shared.sd_model.lora_layer_mapping and module is shared.sd_model.lora_layer_mapping[lora_name]:
+                module_model_reference_count[lora_name] = name
+            else:
+                print("ALERT!!!!!!!")
+        for name, module in shared.sd_model.model.named_modules():
+            lora_name = name.replace(".", "_")
+            print(f"{name}: {lora_name} ref count: {sys.getrefcount(module)}. In lora: {lora_name in shared.sd_model.lora_layer_mapping and module is shared.sd_model.lora_layer_mapping[lora_name]}")
+            if lora_name in shared.sd_model.lora_layer_mapping and module is shared.sd_model.lora_layer_mapping[lora_name]:
+                module_model_reference_count[lora_name] = name
+            else:
+                print("ALERT!!!!!!!")
+        update_ref_count(shared.sd_model.lora_layer_mapping, lora_reference_count, "**3")
+        for key in lora_reference_count:
+            if not key in module_model_reference_count:
+                print(f"special item {key} with ref count: {lora_reference_count[key]}")
+            else:
+                if lora_reference_count[key] != 3:
+                    print(f"special item {key} with ref count: {lora_reference_count[key]}")
+        #if shared.sd_model._modules["model"] is shared.sd_model.lora_layer_mapping[""]:
+        #    print("YES!!!!!!!! We are the same.")
+        #for key in shared.sd_model.__dict__:
+        #    print(f"{key}{type(shared.sd_model.__dict__[key])} ref count: {sys.getrefcount(shared.sd_model.__dict__[key])}")
+        #del shared.sd_model._buffers
+        #print(shared.sd_model._buffers)
+        print(shared.sd_model._parameters)
+        #del shared.sd_model._backward_hooks
+        #print(shared.sd_model._backward_hooks)
+        #del shared.sd_model._forward_hooks
+        #print(shared.sd_model._forward_hooks)
+        #del shared.sd_model._forward_pre_hooks
+        #print(shared.sd_model._forward_pre_hooks)
+        #del shared.sd_model._state_dict_hooks
+        #print(shared.sd_model._state_dict_hooks)
+        #del shared.sd_model._load_state_dict_pre_hooks
+        #print(shared.sd_model._load_state_dict_pre_hooks)
+        #del shared.sd_model._load_state_dict_post_hooks
+        #print(shared.sd_model._load_state_dict_post_hooks)
+        #del shared.sd_model._modules
+        #print(shared.sd_model._modules)
+        #del shared.sd_model._param_requires_grad_state
+        #print(shared.sd_model._param_requires_grad_state)
+        #del shared.sd_model._parameters
+        #del shared.sd_model.ucg_training
+        #print(shared.sd_model.ucg_training)
+        #for key in list(shared.sd_model.lora_layer_mapping.keys()):
+        #    del shared.sd_model.lora_layer_mapping[key]
+        #print(shared.sd_model.lora_layer_mapping)
+        #for key in list(shared.sd_model._modules.keys()):
+        #    del shared.sd_model._modules[key]
+        #print(shared.sd_model._modules)
+        #for key in list(shared.sd_model._buffers.keys()):
+        #    del shared.sd_model._buffers[key]
+        #print(shared.sd_model._buffers)
+        shared.sd_model.cpu()
         shared.sd_model = None
+        print("7# sd_model ref count: {ref_count}".format(ref_count=sys.getrefcount(sd_model)))
         sd_model = None
-        gc.collect()
+        print(checkpoints_loaded)
         devices.torch_gc()
         torch.cuda.empty_cache()
+        gc.collect()
 
     print(f"Unloaded weights {timer.summary()}.")
 

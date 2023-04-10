@@ -32,22 +32,22 @@ class CFGDenoiserParams:
     def __init__(self, x, image_cond, sigma, sampling_step, total_sampling_steps, text_cond, text_uncond):
         self.x = x
         """Latent image representation in the process of being denoised"""
-        
+
         self.image_cond = image_cond
         """Conditioning image"""
-        
+
         self.sigma = sigma
         """Current sigma noise step value"""
-        
+
         self.sampling_step = sampling_step
         """Current Sampling step number"""
-        
+
         self.total_sampling_steps = total_sampling_steps
         """Total number of sampling steps planned"""
-        
+
         self.text_cond = text_cond
         """ Encoder hidden states of text conditioning from prompt"""
-        
+
         self.text_uncond = text_uncond
         """ Encoder hidden states of text conditioning from negative prompt"""
 
@@ -110,9 +110,16 @@ def app_started_callback(demo: Optional[Blocks], app: FastAPI):
 
 
 def model_loaded_callback(sd_model):
+    count = sys.getrefcount(sd_model)
+    print("callback: sd_model ref count: {ref_count}".format(ref_count=count))
     for c in callback_map['callbacks_model_loaded']:
         try:
             c.callback(sd_model)
+            current_count = sys.getrefcount(sd_model)
+            if current_count > count:
+                print(c)
+                print("sd_model ref count recreased: {count_diff}".format(count_diff=current_count-count))
+            count = current_count
         except Exception:
             report_exception(c, 'model_loaded_callback')
 
@@ -231,7 +238,7 @@ def add_callback(callbacks, fun):
 
     callbacks.append(ScriptCallback(filename, fun))
 
-    
+
 def remove_current_script_callbacks():
     stack = [x for x in inspect.stack() if x.filename != __file__]
     filename = stack[0].filename if len(stack) > 0 else 'unknown file'
