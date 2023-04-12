@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from packaging import version
+from concurrent.futures import ThreadPoolExecutor
 
 import logging
 logging.getLogger("xformers").addFilter(lambda record: 'A matching Triton is not available' not in record.getMessage())
@@ -30,7 +31,8 @@ startup_timer.record("import ldm")
 
 from modules import extra_networks, ui_extra_networks_checkpoints
 from modules import extra_networks_hypernet, ui_extra_networks_hypernets, ui_extra_networks_textual_inversion
-from modules.call_queue import wrap_queued_call, queue_lock, wrap_gradio_gpu_call
+from modules import call_queue
+from modules.call_queue import submit_to_gpu_worker, queue_lock, wrap_gradio_gpu_call
 
 # Truncate version number of nightly/local build of PyTorch to not cause exceptions with CodeFormer or Safetensors
 if ".dev" in torch.__version__ or "+git" in torch.__version__:
@@ -99,6 +101,8 @@ Use --skip-version-check commandline argument to disable this check.
 
 
 def initialize():
+    call_queue.gpu_worker_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu_worker_")
+
     check_versions()
 
     extensions.list_extensions()
@@ -146,9 +150,9 @@ def initialize():
 
     shared.opts.data["sd_model_checkpoint"] = shared.sd_model.sd_checkpoint_info.title
 
-    shared.opts.onchange("sd_model_checkpoint", wrap_queued_call(lambda: modules.sd_models.reload_model_weights()))
-    shared.opts.onchange("sd_vae", wrap_queued_call(lambda: modules.sd_vae.reload_vae_weights()), call=False)
-    shared.opts.onchange("sd_vae_as_default", wrap_queued_call(lambda: modules.sd_vae.reload_vae_weights()), call=False)
+    shared.opts.onchange("sd_model_checkpoint", submit_to_gpu_worker(lambda: modules.sd_models.reload_model_weights()))
+    shared.opts.onchange("sd_vae", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
+    shared.opts.onchange("sd_vae_as_default", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
     shared.opts.onchange("temp_dir", ui_tempdir.on_tmpdir_changed)
     startup_timer.record("opts onchange")
 

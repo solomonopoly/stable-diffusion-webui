@@ -1,22 +1,39 @@
 import html
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import traceback
 import time
+import functools
 
 from modules import shared, progress
 
 queue_lock = threading.Lock()
 
+gpu_worker_pool: ThreadPoolExecutor | None = None
 
-def wrap_queued_call(func):
-    def f(*args, **kwargs):
-        with queue_lock:
-            res = func(*args, **kwargs)
 
+def submit_to_gpu_worker(func: callable, timeout: int = 60) -> callable:
+    def call_function_in_gpu_wroker(*args, **kwargs):
+        if gpu_worker_pool is None:
+            raise RuntimeError("GPU worker thread has not been initialized.")
+        future_res = gpu_worker_pool.submit(
+            func, *args, **kwargs)
+        res = future_res.result(timeout=timeout)
         return res
+    return call_function_in_gpu_wroker
 
-    return f
+
+def wrap_gpu_call(func, id_task, *args, **kwargs):
+    shared.state.begin()
+    progress.start_task(id_task)
+
+    try:
+        res = func(*args, **kwargs)
+    finally:
+        shared.state.end()
+        progress.finish_task(id_task)
+    return res
 
 
 def wrap_gradio_gpu_call(func, extra_outputs=None):
@@ -29,16 +46,8 @@ def wrap_gradio_gpu_call(func, extra_outputs=None):
         else:
             id_task = None
 
-        with queue_lock:
-            shared.state.begin()
-            progress.start_task(id_task)
-
-            try:
-                res = func(*args, **kwargs)
-            finally:
-                progress.finish_task(id_task)
-
-            shared.state.end()
+        res = submit_to_gpu_worker(
+            functools.partial(wrap_gpu_call, func, id_task), timeout=60 * 10)(*args, **kwargs)
 
         return res
 
