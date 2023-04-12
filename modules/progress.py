@@ -56,11 +56,15 @@ def record_results(id_task, res):
         recorded_results.pop(0)
 
 
-def add_task_to_queue(id_job):
-    pending_tasks[id_job] = {
+def add_task_to_queue(id_job, job_info=None):
+    task_info = {
         'added_at': time.time(),
         'last_accessed_at': time.time(),
     }
+    if job_info:
+        task_info.update(job_info)
+
+    pending_tasks[id_job] = task_info
 
 
 class ProgressRequest(BaseModel):
