@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from packaging import version
+from concurrent.futures import ThreadPoolExecutor
 
 import logging
 
@@ -39,7 +40,8 @@ startup_timer.record("import ldm")
 
 from modules import extra_networks, ui_extra_networks_checkpoints
 from modules import extra_networks_hypernet, ui_extra_networks_hypernets, ui_extra_networks_textual_inversion
-from modules.call_queue import wrap_queued_call, queue_lock, wrap_gradio_gpu_call
+from modules import call_queue
+from modules.call_queue import submit_to_gpu_worker, queue_lock, wrap_gradio_gpu_call
 from modules.ui_common import add_static_filedir_to_demo
 
 # Truncate version number of nightly/local build of PyTorch to not cause exceptions with CodeFormer or Safetensors
@@ -70,7 +72,7 @@ import modules.hypernetworks.hypernetwork
 
 startup_timer.record("other imports")
 
-MAX_ANYIO_WORKER_THREAD = 5
+MAX_ANYIO_WORKER_THREAD = 64
 
 
 if cmd_opts.server_name:
@@ -151,26 +153,11 @@ Use --skip-version-check commandline argument to disable this check.
 
 
 def initialize():
-    import anyio
-    from anyio._backends._asyncio import _default_thread_limiter, CapacityLimiter
+    call_queue.gpu_worker_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu_worker_")
 
     fix_asyncio_event_loop_policy()
 
     check_versions()
-
-    def my_current_default_thread_limiter() -> CapacityLimiter:
-        limiter = CapacityLimiter(int(MAX_ANYIO_WORKER_THREAD))
-        _default_thread_limiter.set(limiter)
-        return limiter
-
-    # Set worker idle time to a big number
-    # to avoid the thread being discrad
-    # since we doubt that creating new thread
-    # will cause memory leak, because the older threads
-    # are not gced correctly
-    anyio._backends._asyncio.WorkerThread.MAX_IDLE_TIME = 60 * 60 * 24 * 7
-    anyio._backends._asyncio.current_default_thread_limiter = my_current_default_thread_limiter
-
 
     extensions.list_extensions()
     localization.list_localizations(cmd_opts.localizations_dir)
@@ -229,9 +216,9 @@ def initialize():
         shared.opts.data["sd_model_checkpoint"] = shared.sd_model.sd_checkpoint_info.title
 
     # do not reload checkpoint after setting updated, but load it before generating images
-    # shared.opts.onchange("sd_model_checkpoint", wrap_queued_call(lambda: modules.sd_models.reload_model_weights()))
-    shared.opts.onchange("sd_vae", wrap_queued_call(lambda: modules.sd_vae.reload_vae_weights()), call=False)
-    shared.opts.onchange("sd_vae_as_default", wrap_queued_call(lambda: modules.sd_vae.reload_vae_weights()), call=False)
+    # shared.opts.onchange("sd_model_checkpoint", submit_to_gpu_worker(lambda: modules.sd_models.reload_model_weights()))
+    shared.opts.onchange("sd_vae", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
+    shared.opts.onchange("sd_vae_as_default", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
     shared.opts.onchange("temp_dir", ui_tempdir.on_tmpdir_changed)
     shared.opts.onchange("gradio_theme", shared.reload_gradio_theme)
     startup_timer.record("opts onchange")
