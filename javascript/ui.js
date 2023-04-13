@@ -486,10 +486,10 @@ window.onload = function () {
                     }
                 }
 
-                if (result.inference_usage && result.inference_usage.Basic) {
+                if (result.tier === 'Free') {
                     const upgradeContent = userContent.querySelector(".upgrade-content");
                     if (upgradeContent) {
-                        upgradeContent.style.display = 'none';
+                        upgradeContent.style.display = 'flex';
                     }
                 }
             } 
