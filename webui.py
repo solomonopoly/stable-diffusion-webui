@@ -17,10 +17,12 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 
 from modules.api.daemon_api import DaemonApi
+from modules.cache import use_sdd_to_cache_remote_file
 
 logging.getLogger("xformers").addFilter(lambda record: 'A matching Triton is not available' not in record.getMessage())
 
 from modules import paths, timer, import_hook, errors
+from modules.paths_internal import data_path
 
 startup_timer = timer.Timer()
 
@@ -31,6 +33,8 @@ warnings.filterwarnings(action="ignore", category=UserWarning, module="torchvisi
 
 
 startup_timer.record("import torch")
+
+import safetensors.torch
 
 import gradio
 startup_timer.record("import gradio")
@@ -154,6 +158,19 @@ Use --skip-version-check commandline argument to disable this check.
 
 def initialize():
     call_queue.gpu_worker_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu_worker_")
+    file_mover_worker_pool = ThreadPoolExecutor(thread_name_prefix="file_mover_threads_")
+    torch.load = use_sdd_to_cache_remote_file(
+        torch.load,
+        data_path,
+        cmd_opts.model_cache_dir,
+        file_mover_worker_pool,
+        cache_size_gb=cmd_opts.model_cache_max_size)
+    safetensors.torch.load_file = use_sdd_to_cache_remote_file(
+        safetensors.torch.load_file,
+        data_path,
+        cmd_opts.model_cache_dir,
+        file_mover_worker_pool,
+        cache_size_gb=cmd_opts.model_cache_max_size)
 
     fix_asyncio_event_loop_policy()
 
