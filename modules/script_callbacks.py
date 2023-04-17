@@ -121,7 +121,8 @@ def app_reload_callback():
 def model_loaded_callback(sd_model):
     for c in callback_map['callbacks_model_loaded']:
         try:
-            c.callback(sd_model)
+            if sd_model:
+                c.callback(sd_model)
         except Exception:
             report_exception(c, 'model_loaded_callback')
 
