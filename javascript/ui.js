@@ -473,7 +473,7 @@ async function browseModels(){
 }
 
 // get user info
-window.addEventListener("load", (event) => {
+onUiLoaded(function(){
     const {origin: hostOrigin, search} = location;
     const isDarkTheme = /theme=dark/g.test(search);
     if (isDarkTheme) {
@@ -491,7 +491,6 @@ window.addEventListener("load", (event) => {
         }
     }).then(result => {
         if (result) {
-            setTimeout(() => {
                 const userContent = gradioApp().querySelector(".user-content");
                 const userInfo = userContent.querySelector(".user_info");
                 if (userInfo) {
@@ -520,7 +519,6 @@ window.addEventListener("load", (event) => {
                         }
                     }
                 }
-            }, 0)
         }
     })
 });
