@@ -444,12 +444,15 @@ div#extras_scale_to_tab div.form{
 }
 
 #quicksettings > div, #quicksettings > fieldset{
-    max-width: 24em;
     min-width: 24em;
     padding: 0;
     border: none;
     box-shadow: none;
     background: none;
+}
+
+.quicksettings {
+    max-width: 24em;
 }
 
 #settings{
