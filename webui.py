@@ -234,8 +234,8 @@ def initialize():
 
     # do not reload checkpoint after setting updated, but load it before generating images
     # shared.opts.onchange("sd_model_checkpoint", submit_to_gpu_worker(lambda: modules.sd_models.reload_model_weights()))
-    shared.opts.onchange("sd_vae", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
-    shared.opts.onchange("sd_vae_as_default", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
+    # shared.opts.onchange("sd_vae", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
+    # shared.opts.onchange("sd_vae_as_default", submit_to_gpu_worker(lambda: modules.sd_vae.reload_vae_weights()), call=False)
     shared.opts.onchange("temp_dir", ui_tempdir.on_tmpdir_changed)
     shared.opts.onchange("gradio_theme", shared.reload_gradio_theme)
     startup_timer.record("opts onchange")
