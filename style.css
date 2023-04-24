@@ -437,6 +437,29 @@ div#extras_scale_to_tab div.form{
     min-width: 0.5em;
 }
 
+.pageniation-info {
+    display: flex;
+    font-size: 20px;
+    justify-content: flex-end;
+    margin-right: 10px;
+}
+
+.pagination_row {
+    justify-content: center;
+}
+
+.page-next:hover, .page-prev:hover {
+    cursor: pointer;
+}
+
+.page-total {
+    margin: 0 10px;
+}
+
+.separator {
+    margin: 0 5px;
+}
+
 /* settings */
 #quicksettings {
     width: fit-content;
