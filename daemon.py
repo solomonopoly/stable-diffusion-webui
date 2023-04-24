@@ -245,6 +245,7 @@ def _renew_service(service: Optional[Process], service_func, service_status: Ser
     service_status.service_pending_at = None
     service_status.state = 'starting'
     service_status.service_restarted_at = datetime.datetime.now()
+    service_status.service_idled_at = None
     return service
 
 
