@@ -37,3 +37,4 @@ notification.mp3
 /cache.json
 workdir
 cache.json.lock
+/localizations
