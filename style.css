@@ -444,6 +444,11 @@ div#extras_scale_to_tab div.form{
     margin-right: 10px;
 }
 
+.pagination {
+    border-top: 1px solid var(--border-color-primary);
+    padding-top: 10px;
+}
+
 .pagination_row {
     justify-content: center;
 }
