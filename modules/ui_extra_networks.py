@@ -397,7 +397,6 @@ def create_ui(container, button, tabname):
 
     with gr.Tabs(elem_id=tabname+"_extra_tabs") as tabs:
         for page in ui.stored_extra_pages:
-            with gr.Tab(page.title):
             self_name_id = page.name.replace(" ", "_")
             with gr.Tab(label=page.title, id=self_name_id, elem_id=self_name_id) as tab:
                 upload_button_id = f"{ui.tabname}_{self_name_id}_upload_button"
