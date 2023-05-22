@@ -639,6 +639,21 @@ function imgExists(url, imgNode, name){
     }
 }
 
+function replaceTextAreaContent(id) {
+    const textareaDomContent = gradioApp().querySelector(`#${id}`);
+    const wrapDomContent = textareaDomContent.querySelector('div');
+    const textarea = textareaDomContent.querySelector('textarea');
+    if (!textarea.classList.contains('hide-text-content')) {
+        textarea.classList.add('hide-text-content');
+    }
+    if (textarea.value.trim()) {
+        wrapDomContent.className = 'textarea-replace-content';
+        const size = textarea.value.length;
+        console.log(size, 'size');
+        wrapDomContent.innerHTML = textarea.value.replace(/哈哈/g, '<span style="color: red;">哈哈</span>');
+    }
+}
+
 // get user info
 onUiLoaded(function(){
     // update generate button text

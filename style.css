@@ -7,6 +7,15 @@
     --block-background-fill: transparent;
 }
 
+.textarea-replace-content {
+    padding: var(--input-padding) !important;
+    z-index: var(--layer-5);
+}
+
+.hide-text-content {
+    -webkit-text-fill-color: transparent;
+}
+
 .user-content {
     justify-content: flex-end;
 }

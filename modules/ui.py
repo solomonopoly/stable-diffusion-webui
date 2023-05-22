@@ -296,6 +296,12 @@ def create_toprow(is_img2img):
                 with gr.Column(scale=80):
                     with gr.Row():
                         prompt = gr.Textbox(label="Prompt", elem_id=f"{id_part}_prompt", show_label=False, lines=3, placeholder="Prompt (press Ctrl+Enter or Alt+Enter to generate)")
+                        prompt.change(
+                            fn=None,
+                            _js=f"replaceTextAreaContent('{id_part}_prompt')",
+                            inputs=[],
+                            outputs=[]
+                        )
 
             with gr.Row():
                 with gr.Column(scale=80):
@@ -367,7 +373,6 @@ def create_toprow(is_img2img):
             with gr.Row(elem_id=f"{id_part}_styles_row"):
                 prompt_styles = gr.Dropdown(label="Styles", elem_id=f"{id_part}_styles", choices=[], value=[], multiselect=True)
                 create_refresh_button(prompt_styles, lambda _: _, current_prompt_styles, f"refresh_{id_part}_styles")
-
     return prompt, prompt_styles, negative_prompt, submit, button_interrogate, button_deepbooru, prompt_style_apply, save_style, paste, extra_networks_button, token_counter, token_button, negative_token_counter, negative_token_button, restore_progress_button, model_title, vae_model_title
 
 
