@@ -1,7 +1,9 @@
 import logging
 import os
+import pathlib
 import sys
 import traceback
+import pickle
 import inspect
 from collections import namedtuple
 
@@ -224,6 +226,10 @@ class EmbeddingDatabase:
         if not os.path.isdir(embdir.path):
             return
 
+        embeddings_pickle_file = pathlib.Path(embdir.path).joinpath('embeddings.pickle')
+        if embeddings_pickle_file.exists():
+            with open(embeddings_pickle_file, 'b') as infile:
+                self.loaded_embeddings = pickle.load(infile)
         for root, dirs, fns in os.walk(embdir.path, followlinks=True):
             for fn in fns:
                 try:
@@ -237,6 +243,10 @@ class EmbeddingDatabase:
                     print(f"Error loading embedding {fn}:", file=sys.stderr)
                     print(traceback.format_exc(), file=sys.stderr)
                     continue
+
+        if not embeddings_pickle_file.exists():
+            with open(embeddings_pickle_file, 'wb') as outfile:
+                pickle.dump(self.loaded_embeddings, outfile)
 
     def load_textual_inversion_embeddings(self, force_reload=False):
         if not force_reload:
@@ -350,16 +360,16 @@ def tensorboard_add(tensorboard_writer, loss, global_step, step, learn_rate, epo
     tensorboard_add_scaler(tensorboard_writer, f"Learn rate/train/epoch-{epoch_num}", learn_rate, step)
 
 def tensorboard_add_scaler(tensorboard_writer, tag, value, step):
-    tensorboard_writer.add_scalar(tag=tag, 
+    tensorboard_writer.add_scalar(tag=tag,
         scalar_value=value, global_step=step)
 
 def tensorboard_add_image(tensorboard_writer, tag, pil_image, step):
     # Convert a pil image to a torch tensor
     img_tensor = torch.as_tensor(np.array(pil_image, copy=True))
-    img_tensor = img_tensor.view(pil_image.size[1], pil_image.size[0], 
+    img_tensor = img_tensor.view(pil_image.size[1], pil_image.size[0],
         len(pil_image.getbands()))
     img_tensor = img_tensor.permute((2, 0, 1))
-                
+
     tensorboard_writer.add_image(tag, img_tensor, global_step=step)
 
 def validate_train_inputs(model_name, learn_rate, batch_size, gradient_step, data_root, template_file, template_filename, steps, save_model_every, create_image_every, log_directory, name="embedding"):
@@ -429,7 +439,7 @@ def train_embedding(request: starlette.requests.Request, id_task, embedding_name
     if initial_step >= steps:
         shared.state.textinfo = "Model has already been trained beyond specified max steps"
         return embedding, filename
-    
+
     scheduler = LearnRateScheduler(learn_rate, steps, initial_step)
     clip_grad = torch.nn.utils.clip_grad_value_ if clip_grad_mode == "value" else \
         torch.nn.utils.clip_grad_norm_ if clip_grad_mode == "norm" else \
@@ -439,7 +449,7 @@ def train_embedding(request: starlette.requests.Request, id_task, embedding_name
     # dataset loading may take a while, so input validations and early returns should be done before this
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
     old_parallel_processing_allowed = shared.parallel_processing_allowed
-    
+
     if shared.opts.training_enable_tensorboard:
         tensorboard_writer = tensorboard_setup(log_directory)
 
@@ -466,7 +476,7 @@ def train_embedding(request: starlette.requests.Request, id_task, embedding_name
             optimizer_saved_dict = torch.load(filename + '.optim', map_location='cpu')
             if embedding.checksum() == optimizer_saved_dict.get('hash', None):
                 optimizer_state_dict = optimizer_saved_dict.get('optimizer_state_dict', None)
-    
+
         if optimizer_state_dict is not None:
             optimizer.load_state_dict(optimizer_state_dict)
             print("Loaded existing optimizer from checkpoint")
@@ -512,7 +522,7 @@ def train_embedding(request: starlette.requests.Request, id_task, embedding_name
 
                 if clip_grad:
                     clip_grad_sched.step(embedding.step)
-            
+
                 with devices.autocast():
                     x = batch.latent_sample.to(devices.device, non_blocking=pin_memory)
                     if use_weight:
@@ -540,7 +550,7 @@ def train_embedding(request: starlette.requests.Request, id_task, embedding_name
                 # go back until we reach gradient accumulation steps
                 if (j + 1) % gradient_step != 0:
                     continue
-                
+
                 if clip_grad:
                     clip_grad(embedding.vec, clip_grad_sched.learn_rate)
 
