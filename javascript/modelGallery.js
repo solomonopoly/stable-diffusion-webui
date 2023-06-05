@@ -1,5 +1,6 @@
 function openWorkSpaceDialog(model_type) {
-    console.log(model_type, 'model_type');
+    currentModelType.personal = model_type;
+    currentModelType.public = model_type;
     popup(initDomPage(), 'gallery');
     initalTab(model_type);
     initLoadMore(model_type);
@@ -80,11 +81,11 @@ async function handleModelData({response, model_type, model_workspace, switchPag
             cardNode.style.background = `url(${item.preview.replace(/\s/g, encodeURIComponent(' '))})`;
         }
 
-        if (judgeLevel(matureLevel.value, item.mature_level )) {
-            cardNode.setAttribute('style', 'filter:blur(10px)');
-        }
+        cardNode.setAttribute('mature-level', item.preview_mature_level || 'None');
 
-        cardNode.setAttribute('mature-level', item.mature_level);
+        if (judgeLevel(matureLevel.value, cardNode.getAttribute('mature-level'))) {
+            cardNode.style['filter'] = 'blur(10px)';
+        }
 
         cardNode.innerHTML = `
             <div class="metadata-button" title="Show metadata" onclick="extraNetworksRequestMetadata(event, '${model_type}', '${item.name}')"></div>
@@ -224,20 +225,23 @@ async function handleModelAddOrRemoved(model_id, model_type, model_workspace) {
     });
 }
 
-function setMatureLevel({list, globalLevel}) {
-    list.forEach(card => {
-        const needBlur = judgeLevel(globalLevel, card.getAttribute('mature-level'));
-        card.setAttribute('style', needBlur ? 'filter:blur(10px)' : 'filter:none');
+function setMatureLevel({modelList, globalLevel}) {
+    modelList.forEach(card => {
+        if (card.id !== `personal_${currentModelType.personal}_upload_button-card` && card.id !== `public${currentModelType.public}_upload_button-card`) {
+            const needBlur = judgeLevel(globalLevel, card.getAttribute('mature-level'));
+            card.style['filter'] = needBlur ? 'blur(10px)' : 'none';
+        }
+        
     })
 }
 
 function changeMatureLevel(self) {
     const personalCardList = gradioApp().querySelector(`#personal-${currentModelType.personal}`).querySelectorAll('.card');
-    setMatureLevel({personalCardList, globalLevel: self.value});
+    setMatureLevel({modelList: personalCardList, globalLevel: self.value});
     // const privateCardList = gradioApp().querySelector(`#private-${currentModelType.public}`).querySelectorAll('.card');
-    // setMatureLevel({privateCardList, globalLevel: self.value});
+    // setMatureLevel({ modelList: privateCardList, globalLevel: self.value});
     const publicCardList = gradioApp().querySelector(`#public-${currentModelType.public}`).querySelectorAll('.card');
-    setMatureLevel({publicCardList, globalLevel: self.value});
+    setMatureLevel({modelList: publicCardList, globalLevel: self.value});
 }
 
 function uploadModel() {
