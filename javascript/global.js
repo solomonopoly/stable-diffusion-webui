@@ -27,11 +27,9 @@ const model_type_mapper = {
 }
 let currentModelTab = 'txt2img';
 
-const currentModelType = {
-    personal: 'checkpoints',
-    public: 'checkpoints'
-}
+let currentModelType = 'checkpoints';
 
+const hasInitTabs = new Map();
 
 const gallertModelCurrentPage = {
     'checkpoints': 1,

@@ -1160,13 +1160,13 @@ textarea {
     font-family: var(--font);
 }
 
-.personal-workspace-top {
+.personal-workspace-top, .public-workspace-title {
     justify-content: space-between;
     margin-bottom: 20px;
-   
+    display: flex;
 }
 
-.personal-workspace-top > span, .gallery-cards p {
+.personal-workspace-top > span, .public-workspace-title > span, .gallery-cards p {
     font-size: 20px;
     color: var(--body-text-color);
 }
@@ -1174,11 +1174,6 @@ textarea {
 .personal-workspace {
     border-bottom: 1px solid var(--border-color-primary);
     padding: 20px 30px;
-}
-
-.personal-workspace-top {
-    display: flex;
-    flex-direction: space-around;
 }
 
 .public-workspace {
@@ -1296,5 +1291,28 @@ textarea {
 
 .scrollload-bottom {
     color: var(--body-text-color);
+    text-align: center;
+}
+
+.no-more-btn {
+    border-radius: var(--button-large-radius);
+    padding: var(--button-large-padding);
+    font-weight: var(--button-large-text-weight);
+    font-size: var(--button-large-text-size);
+    border: var(--button-border-width) solid var(--button-primary-border-color);
+    background: var(--button-primary-background-fill);
+    color: var(--button-primary-text-color);
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    transition: var(--button-transition);
+    box-shadow: var(--button-shadow);
+    padding: var(--button-large-padding);
+    text-align: center;
+    width: 50%;
+}
+
+.no-more-btn:hover {
+    cursor: pointer;
 }
 
