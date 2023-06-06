@@ -1,12 +1,11 @@
-function openWorkSpaceDialog(model_type) {
-    currentModelType.personal = model_type;
-    currentModelType.public = model_type;
+async function openWorkSpaceDialog(model_type = 'checkpoints') {
+    currentModelType = model_type;
+    hasInitTabs.set(model_type, true);
     popup(initDomPage(), 'gallery');
     initalTab(model_type);
-    initLoadMore(model_type);
     // getPrivateModelList({model_type: 'checkpoints', page: 1, loading: false, model_workspace: 'private'});
     getPersonalModelList({model_type: model_type, page: 1, loading: true, model_workspace: 'personal'});
-    getPublicModelList({model_type: model_type, page: 1, loading: true, model_workspace: 'public'});
+    getPublicModelList({init:true, model_type: model_type, page: 1, loading: true, model_workspace: 'public'});
 }
 
 function getPrivateModelList({ model_type, page, loading, model_workspace, switchPage }) {
@@ -15,10 +14,10 @@ function getPrivateModelList({ model_type, page, loading, model_workspace, switc
     getPageDataAndUpdateList({ model_type, page, loading, model_workspace, promise, switchPage});
 }
 
-async function getPublicModelList({ model_type, page, loading, model_workspace, switchPage, sl, refreshTabLock }) {
+async function  getPublicModelList({ init, model_type, page, loading, model_workspace, switchPage, sl, refreshTabLock }) {
     const searchValue = gradioApp().querySelector('#gallery-search').value.toLowerCase();
     const promise = fetchGet(`/internal/models?model_type=${model_type_mapper[model_type]}&search_value=${searchValue}&page=${page}&page_size=${pageSize}`);
-    getPageDataAndUpdateList({ model_type, page, loading, model_workspace, promise, switchPage, sl, refreshTabLock});
+    getPageDataAndUpdateList({ init, model_type, page, loading, model_workspace, promise, switchPage, sl, refreshTabLock});
 }
 
 function getPersonalModelList({ model_type, page, loading, model_workspace }) {
@@ -36,7 +35,7 @@ function judgeLevel(globalLevel, pictureLevel) {
 }
 
 
-async function handleModelData({response, model_type, model_workspace, switchPage, sl, refreshTabLock}) {
+async function handleModelData({init, response, model_type, model_workspace, switchPage, sl, refreshTabLock}) {
     const cardsParentNode = model_workspace === 'personal' ? gradioApp().querySelector(`#${model_workspace}-${model_type}`)
          : gradioApp().querySelector(`#${model_workspace}-${model_type}-cards`);
     const { model_list, total_count: totalCount } = await response.json();
@@ -98,7 +97,7 @@ async function handleModelData({response, model_type, model_workspace, switchPag
         `
         cardsParentNode.appendChild(cardNode);
     })
-
+    init && initLoadMore(model_type);
     refreshTabLock && updateLockStatus(model_type);
     sl && sl.unLock()
 }
@@ -109,11 +108,11 @@ function updateLockStatus(modelType) {
     })
 }
 
-async function getPageDataAndUpdateList({ model_type, loading=true, model_workspace, promise, switchPage, sl, refreshTabLock}) {
+async function getPageDataAndUpdateList({ init, model_type, loading=true, model_workspace, promise, switchPage, sl, refreshTabLock}) {
     // loading
     if (loading) {
         notifier.asyncBlock(promise, (response) => {
-            handleModelData({response, model_type, model_workspace, switchPage, refreshTabLock })
+            handleModelData({response, model_type, model_workspace, switchPage, refreshTabLock, init })
         });
     } else {
         const response = await promise;
@@ -148,10 +147,10 @@ function initDomPage() {
                     <li><a lora href="#personal-lora">Lora</a></li>
                 </ul>
                 <div class="gallery-cards">
-                    <ul id="personal-checkpoints" class="extra-network-cards" id="personal-checkpoints-cards"><li class="card"></li></ul>
-                    <ul id="personal-textual_inversion" class="extra-network-cards" id="personal-textual_inversion-cards"><li class="card"></li></ul>
-                    <ul id="personal-hypernetworks" class="extra-network-cards" id="personal-hypernetworks-cards"><li class="card"></li></ul>
-                    <ul id="personal-lora" class="extra-network-cards" id="personal-lora-cards"><li class="card"></li></ul>
+                    <ul id="personal-checkpoints" class="extra-network-cards" id="personal-checkpoints-cards"></li></ul>
+                    <ul id="personal-textual_inversion" class="extra-network-cards" id="personal-textual_inversion-cards"></li></ul>
+                    <ul id="personal-hypernetworks" class="extra-network-cards" id="personal-hypernetworks-cards"></li></ul>
+                    <ul id="personal-lora" class="extra-network-cards" id="personal-lora-cards"></li></ul>
                 </div>
             </div>
         </div>
@@ -159,6 +158,9 @@ function initDomPage() {
             <div class="public-workspace-top">
                 <input id="gallery-search" class="scroll-hide search" placeholder="Search with model names, hashes, tags, trigger words"></input>
                 <div class="search-btn"><button class="upload-btn" onclick="uploadModel()">Upload Models</button></div>
+            </div>
+            <div class="public-workspace-title">
+                <span>Model Gallery</span>
             </div>
             <div class="public-workspace-model-list">
                 <ul public-data-tabs>
@@ -172,28 +174,28 @@ function initDomPage() {
                     <div id="public-checkpoints" >
                         <div class="scrollload-container" model-type="checkpoints" workspace="public">
                             <ul id="public-checkpoints-cards" class="extra-network-cards scrollload-content">
-                                <li class="card"></li>
+                               
                             </ul>
                         </div>
                     </div>
                     <div id="public-textual_inversion">
                         <div class="scrollload-container" model-type="textual_inversion" workspace="public">
                             <ul id="public-textual_inversion-cards" class="extra-network-cards scrollload-content">
-                                <li class="card"></li>
+                               
                             </ul>
                         </div>
                     </div>
                     <div id="public-hypernetworks">
                         <div class="scrollload-container" model-type="hypernetworks" workspace="public">
                             <ul id="public-hypernetworks-cards" class="extra-network-cards scrollload-content">
-                                <li class="card"></li>
+                               
                             </ul>
                         </div>
                     </div>
                     <div id="public-lora">
                         <div class="scrollload-container" model-type="lora" workspace="public">
                             <ul id="public-lora-cards" class="extra-network-cards scrollload-content">
-                                <li class="card"></li>
+                               
                             </ul>
                         </div>
                     </div>
@@ -227,7 +229,7 @@ async function handleModelAddOrRemoved(model_id, model_type, model_workspace) {
 
 function setMatureLevel({modelList, globalLevel}) {
     modelList.forEach(card => {
-        if (card.id !== `personal_${currentModelType.personal}_upload_button-card` && card.id !== `public${currentModelType.public}_upload_button-card`) {
+        if (card.id !== `personal_${currentModelType}_upload_button-card` && card.id !== `public${currentModelType}_upload_button-card`) {
             const needBlur = judgeLevel(globalLevel, card.getAttribute('mature-level'));
             card.style['filter'] = needBlur ? 'blur(10px)' : 'none';
         }
@@ -236,22 +238,22 @@ function setMatureLevel({modelList, globalLevel}) {
 }
 
 function changeMatureLevel(self) {
-    const personalCardList = gradioApp().querySelector(`#personal-${currentModelType.personal}`).querySelectorAll('.card');
+    const personalCardList = gradioApp().querySelector(`#personal-${currentModelType}`).querySelectorAll('.card');
     setMatureLevel({modelList: personalCardList, globalLevel: self.value});
-    // const privateCardList = gradioApp().querySelector(`#private-${currentModelType.public}`).querySelectorAll('.card');
+    // const privateCardList = gradioApp().querySelector(`#private-${currentModelType}`).querySelectorAll('.card');
     // setMatureLevel({ modelList: privateCardList, globalLevel: self.value});
-    const publicCardList = gradioApp().querySelector(`#public-${currentModelType.public}`).querySelectorAll('.card');
+    const publicCardList = gradioApp().querySelector(`#public-${currentModelType}`).querySelectorAll('.card');
     setMatureLevel({modelList: publicCardList, globalLevel: self.value});
 }
 
 function uploadModel() {
-    gradioApp().querySelector(`#${currentModelTab}_${currentModelType.public}_upload_button-card`).click();
+    gradioApp().querySelector(`#${currentModelTab}_${currentModelType}_upload_button-card`).click();
 }
 
 function searchPublicModels() {
-    gallertModelCurrentPage[currentModelType.public] = 1;
+    gallertModelCurrentPage[currentModelType] = 1;
     // getPrivateModelList({model_type: 'checkpoints', page: 1, loading: true, model_workspace: 'private'});
-    getPublicModelList({model_type: currentModelType.public, page: 1, loading: true, model_workspace: 'public', search: true});
+    getPublicModelList({model_type: currentModelType, page: 1, loading: true, model_workspace: 'public', search: true});
 }
 
 function debounceSearchModels(func, wait=1000, immediate) {
@@ -277,33 +279,35 @@ function debounceSearchModels(func, wait=1000, immediate) {
 const debounceSearchModelGallery = debounceSearchModels(searchPublicModels);
 
 function initalTab (model_type) {
-    new Tabby('[personal-data-tabs]', {
+    const personalTabs = new Tabby('[personal-data-tabs]', {
         default: `[${model_type}]` // The selector to use for the default tab
     });
 
-    new Tabby('[public-data-tabs]', {
+    const publicTabs = new Tabby('[public-data-tabs]', {
         default: `[${model_type}]` // The selector to use for the default tab
     });
 
     document.addEventListener('tabby', function (event) {
         const content = event.detail.content;
         const [type, modelType] = content.id.split('-');
-        currentModelType[type] = modelType;
-
+        currentModelType = modelType;
         if (type === 'public') {
             // not refresh data while at other page
-            if (gallertModelCurrentPage[modelType] === 1) {
-                getPublicModelList({model_type: currentModelType[type], page: 1, model_workspace: type, refreshTabLock: true})
-                // getPrivateModelList({model_type: currentModelType[type], page: 1, model_workspace: 'private' })
+            if (!hasInitTabs.get(modelType)) {
+                getPublicModelList({model_type: currentModelType, page: 1, model_workspace: type, refreshTabLock: true})
+                // getPrivateModelList({model_type: currentModelType, page: 1, model_workspace: 'private' })
+            } else {
+                updateLockStatus(modelType);
             }
+            personalTabs.toggle(`#personal-${modelType}`);
         } else {
             // not refresh data while on other page
-            if (gallertModelCurrentPage[modelType] === 1) {
-                getPersonalModelList({model_type: currentModelType[type], page: 1, model_workspace: type})
+            if (!hasInitTabs.get(modelType)) {
+                getPersonalModelList({model_type: currentModelType, page: 1, model_workspace: type})
             }
+            publicTabs.toggle(`#public-${modelType}`);
         }
-        
-        
+        hasInitTabs.set(modelType, true);
     }, false);
 
     const gallerySearchBtn = gradioApp().querySelector('#gallery-search');
@@ -325,6 +329,7 @@ function initLoadMore(model_type) {
                 container: container,
                 loadMore: function(sl) {
                     const modelType = container.getAttribute('model-type');
+                    if (currentModelType !== modelType) return;
                     if (gallertModelCurrentPage[modelType] >= galleryModelTotalPage.public[modelType]) {
                       // call noMoreData when on the last page
                       sl.noMoreData()
@@ -337,6 +342,9 @@ function initLoadMore(model_type) {
                 isInitLock: index === defaultModelType.findIndex(item => item === model_type) ? false : true,
                 enablePullRefresh: false,
                 window: gradioApp().querySelector('.global-popup'),
+                noMoreDataHtml: `
+                <button onclick="uploadModel()" class="no-more-btn lg primary gradio-button">The End of List</button>
+                `,
                 // threshold: 20,
             })
         )

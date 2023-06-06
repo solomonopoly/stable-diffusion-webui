@@ -364,6 +364,19 @@ def create_browse_model_button(label, elem_id, button_style="", visible=True):
         """.format(button_id=elem_id, button_style=button_style), visible=False)
     button.style(full_width=False)
 
+def create_browse_all_model_button(label, button_style="", visible=True):
+    button = gr.Button(label, variant="secondary", visible=visible)
+    button.click(None, list(), list(), _js="openWorkSpaceDialog()")
+    if button_style:
+        gr.HTML("""
+        <style>
+        #{button_id} {{
+            {button_style};
+        }}
+        <\\style>
+        """.format(button_id='browse_all_model', button_style=button_style), visible=False)
+    button.style(full_width=False)
+
 
 def get_static_files(filepath: str):
     full_path = os.path.join(script_path, "static", filepath)
