@@ -552,7 +552,7 @@ async function browseModels(){
         img2img_button.click();
     }
 
-    const browseModelsBtn = gradioApp().querySelector('#browse_sd_vae');
+    const browseModelsBtn = gradioApp().querySelector('#browse_models_in_workspace');
     if (gradioApp().querySelector("div#img2img_extra_networks").classList.contains("hide") && gradioApp().querySelector("div#txt2img_extra_networks").classList.contains("hide")) {
         browseModelsBtn.textContent = 'Hide workspace models';
     } else {
