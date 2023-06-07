@@ -1295,12 +1295,8 @@ textarea {
 }
 
 .no-more-btn {
-    border-radius: var(--button-large-radius);
-    padding: var(--button-large-padding);
     font-weight: var(--button-large-text-weight);
     font-size: var(--button-large-text-size);
-    border: var(--button-border-width) solid var(--button-primary-border-color);
-    background: var(--button-primary-background-fill);
     color: var(--button-primary-text-color);
     display: inline-flex;
     justify-content: center;
@@ -1312,7 +1308,9 @@ textarea {
     width: 50%;
 }
 
+
 .no-more-btn:hover {
     cursor: pointer;
+    color: var(--primary-500);
 }
 

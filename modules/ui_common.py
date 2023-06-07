@@ -366,7 +366,7 @@ def create_browse_model_button(label, elem_id, button_style="", visible=True):
 
 def create_browse_all_model_button(label, button_style="", visible=True):
     button = gr.Button(label, variant="secondary", visible=visible)
-    button.click(None, list(), list(), _js="openWorkSpaceDialog()")
+    button.click(None, list(), list(), _js="openWorkSpaceDialog")
     if button_style:
         gr.HTML("""
         <style>
