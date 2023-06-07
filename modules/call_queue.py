@@ -37,6 +37,7 @@ def wrap_gpu_call(request: gradio.routes.Request, func, func_name, id_task, *arg
     monitor_log_id = None
     status = ''
     log_message = ''
+    task_failed = False
     res = list()
     time_consumption = {}
     try:
@@ -72,7 +73,6 @@ def wrap_gpu_call(request: gradio.routes.Request, func, func_name, id_task, *arg
         progress.record_results(id_task, res)
         status = 'finished'
         log_message = 'done'
-        task_failed = False
     except Exception as e:
         if not isinstance(e, MonitorException):
             task_failed = True
