@@ -261,7 +261,7 @@ async function handleData({response, tabname, page_name }) {
 
         cardNode.setAttribute('filename', item.name);
         if (item.preview) {
-            cardNode.style.background = `url(${item.preview.replace(/\s/g, encodeURIComponent(' '))})`;
+            cardNode.style.backgroundImage = `url(${item.preview.replace(/\s/g, encodeURIComponent(' '))})`;
         }
 
         const metaDataButtonNode = document.createElement('div');

@@ -38,7 +38,7 @@ from modules.images import save_image
 from modules.sd_hijack import model_hijack
 from modules.sd_samplers import samplers, samplers_for_img2img
 from modules.textual_inversion import textual_inversion
-from modules.ui_common import create_upload_button, create_browse_model_button, create_browse_all_model_button
+from modules.ui_common import create_upload_button, create_browse_model_button
 import modules.hypernetworks.ui
 from modules.generation_parameters_copypaste import image_from_url_text
 import modules.extras
@@ -1772,11 +1772,14 @@ def create_ui():
                         component_dict[k] = component
                     create_browse_model_button(
                         'Show Models in workspace',
-                        'browse_models_in_workspace' ,
-                        button_style="width: 200px !important; flex-grow: 0.5 !important; align-self: flex-end;")
-                    create_browse_all_model_button(
+                        'browse_models_in_workspace',
+                        button_style="width: 200px !important; flex-grow: 0.3 !important; align-self: flex-end;",
+                        js_function="browseModels")
+                    create_browse_model_button(
                         'Browse All Models',
-                        button_style="width: 200px !important; align-self: flex-end;")
+                        'browse_all_models',
+                        button_style="width: 200px !important; flex-grow: 0.3 !important; align-self: flex-end;",
+                        js_function="openWorkSpaceDialog")
 
         parameters_copypaste.connect_paste_params_buttons()
 

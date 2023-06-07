@@ -257,6 +257,10 @@ async function handleModelAddOrRemoved(model_id, model_type, model_workspace) {
             notifier.success(`${msgType} Success`)
             getPersonalModelList({model_type: model_type, page: 1, loading: true, model_workspace: 'personal'});
             fetchPageDataAndUpdateList({tabname: currentModelTab, page_name: model_type, page: 1, loading:false})
+            if (model_type === 'checkpoints') {
+                const refeshCheckpointBtn = gradioApp().querySelector('#refresh_sd_model_checkpoint');
+                refeshCheckpointBtn.click();
+            }
         } else {
             notifier.alert(`${msgType} Failed`)
         }
