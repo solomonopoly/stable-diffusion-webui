@@ -1771,7 +1771,7 @@ def create_ui():
                         component = create_setting_component(k, is_quicksettings=True)
                         component_dict[k] = component
                     create_browse_model_button(
-                        'Browse Models',
+                        'Show Models in workspace',
                         'browse_' + k,
                         button_style="width: 200px !important; align-self: flex-end;")
                     create_browse_all_model_button(

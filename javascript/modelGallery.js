@@ -1,11 +1,46 @@
 async function openWorkSpaceDialog(model_type = 'checkpoints') {
     currentModelType = model_type;
+    resetParams();
     hasInitTabs.set(model_type, true);
     popup(initDomPage(), 'gallery');
     initalTab(model_type);
     // getPrivateModelList({model_type: 'checkpoints', page: 1, loading: false, model_workspace: 'private'});
     getPersonalModelList({model_type: model_type, page: 1, loading: true, model_workspace: 'personal'});
     getPublicModelList({init:true, model_type: model_type, page: 1, loading: true, model_workspace: 'public'});
+}
+
+function resetParams() {
+    hasInitTabs.clear();
+    gallertModelScrollloads = [];
+    document.removeEventListener('tabby', tabEventListener);
+    gallerySearchBtn && gallerySearchBtn.removeEventListener('input', debounceSearchModelGallery);
+    gallertModelCurrentPage = {
+        'checkpoints': 1,
+        'lora': 1,
+        'hypernetworks': 1,
+        'textual_inversion': 1
+    };
+
+    galleryModelTotalPage = {
+        personal: {
+            'checkpoints': 1,
+            'lora': 1,
+            'hypernetworks': 1,
+            'textual_inversion': 1
+        },
+        public: {
+            'checkpoints': 1,
+            'lora': 1,
+            'hypernetworks': 1,
+            'textual_inversion': 1
+        },
+        private: {
+            'checkpoints': 1,
+            'lora': 1,
+            'hypernetworks': 1,
+            'textual_inversion': 1
+        }
+    }
 }
 
 function getPrivateModelList({ model_type, page, loading, model_workspace, switchPage }) {
@@ -77,7 +112,7 @@ async function handleModelData({init, response, model_type, model_workspace, swi
         
         cardNode.setAttribute('filename', item.name);
         if (item.preview) {
-            cardNode.style.background = `url(${item.preview.replace(/\s/g, encodeURIComponent(' '))})`;
+            cardNode.style.backgroundImage = `url(${item.preview.replace(/\s/g, encodeURIComponent(' '))})`;
         }
 
         cardNode.setAttribute('mature-level', item.preview_mature_level || 'None');
@@ -221,6 +256,7 @@ async function handleModelAddOrRemoved(model_id, model_type, model_workspace) {
         if (response.status === 200) {
             notifier.success(`${msgType} Success`)
             getPersonalModelList({model_type: model_type, page: 1, loading: true, model_workspace: 'personal'});
+            fetchPageDataAndUpdateList({tabname: currentModelTab, page_name: model_type, page: 1, loading:false})
         } else {
             notifier.alert(`${msgType} Failed`)
         }
@@ -276,41 +312,44 @@ function debounceSearchModels(func, wait=1000, immediate) {
     }
 }
 
+function tabEventListener (event) {
+    const content = event.detail.content;
+    const [type, modelType] = content.id.split('-');
+    currentModelType = modelType;
+    if (type === 'public') {
+        // not refresh data while at other page
+        
+        if (!hasInitTabs.get(modelType)) {
+            getPublicModelList({model_type: currentModelType, page: 1, model_workspace: type, refreshTabLock: true})
+            // getPrivateModelList({model_type: currentModelType, page: 1, model_workspace: 'private' })
+        } else {
+            updateLockStatus(modelType);
+        }
+        personalTabs.toggle(`#personal-${modelType}`);
+    } else {
+        // not refresh data while on other page
+        if (!hasInitTabs.get(modelType)) {
+            getPersonalModelList({model_type: currentModelType, page: 1, model_workspace: type})
+        }
+        publicTabs.toggle(`#public-${modelType}`);
+    }
+    hasInitTabs.set(modelType, true);
+}
+
 const debounceSearchModelGallery = debounceSearchModels(searchPublicModels);
 
 function initalTab (model_type) {
-    const personalTabs = new Tabby('[personal-data-tabs]', {
+    personalTabs = new Tabby('[personal-data-tabs]', {
         default: `[${model_type}]` // The selector to use for the default tab
     });
 
-    const publicTabs = new Tabby('[public-data-tabs]', {
+    publicTabs = new Tabby('[public-data-tabs]', {
         default: `[${model_type}]` // The selector to use for the default tab
     });
 
-    document.addEventListener('tabby', function (event) {
-        const content = event.detail.content;
-        const [type, modelType] = content.id.split('-');
-        currentModelType = modelType;
-        if (type === 'public') {
-            // not refresh data while at other page
-            if (!hasInitTabs.get(modelType)) {
-                getPublicModelList({model_type: currentModelType, page: 1, model_workspace: type, refreshTabLock: true})
-                // getPrivateModelList({model_type: currentModelType, page: 1, model_workspace: 'private' })
-            } else {
-                updateLockStatus(modelType);
-            }
-            personalTabs.toggle(`#personal-${modelType}`);
-        } else {
-            // not refresh data while on other page
-            if (!hasInitTabs.get(modelType)) {
-                getPersonalModelList({model_type: currentModelType, page: 1, model_workspace: type})
-            }
-            publicTabs.toggle(`#public-${modelType}`);
-        }
-        hasInitTabs.set(modelType, true);
-    }, false);
+    document.addEventListener('tabby', tabEventListener, false);
 
-    const gallerySearchBtn = gradioApp().querySelector('#gallery-search');
+    gallerySearchBtn = gradioApp().querySelector('#gallery-search');
 
     gallerySearchBtn.addEventListener("input", debounceSearchModelGallery);
 }
@@ -343,7 +382,7 @@ function initLoadMore(model_type) {
                 enablePullRefresh: false,
                 window: gradioApp().querySelector('.global-popup'),
                 noMoreDataHtml: `
-                <button onclick="uploadModel()" class="no-more-btn lg primary gradio-button">The End of List</button>
+                <a onclick="uploadModel()" class="no-more-btn lg primary gradio-button">The End of List</a>
                 `,
                 // threshold: 20,
             })

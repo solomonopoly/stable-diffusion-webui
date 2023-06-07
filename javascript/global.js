@@ -1,5 +1,5 @@
 const PRICING_URL = 'https://www.diffus.graviti.com/pricing';
-const galleryModelTotalPage = {
+let galleryModelTotalPage = {
     personal: {
         'checkpoints': 1,
         'lora': 1,
@@ -31,11 +31,14 @@ let currentModelType = 'checkpoints';
 
 const hasInitTabs = new Map();
 
-const gallertModelCurrentPage = {
+let gallertModelCurrentPage = {
     'checkpoints': 1,
     'lora': 1,
     'hypernetworks': 1,
     'textual_inversion': 1
 };
-const gallertModelScrollloads = [];
+let gallertModelScrollloads = [];
+let personalTabs = '';
+let publicTabs = '';
+let gallerySearchBtn = null;
 const defaultModelType = ['checkpoints', 'textual_inversion', 'hypernetworks', 'lora'];

@@ -309,7 +309,7 @@ async function handleData({response, tabname, page_name }) {
     })
 }
 
-async function fetchPageDataAndUpdateList({tabname, page_name, page, need_refresh = false, loading=true}) {
+async function fetchPageDataAndUpdateList({tabname, page_name, page, loading=true}) {
     const searchValue = gradioApp().querySelector('#'+tabname+'_extra_tabs textarea').value.toLowerCase();
     
    const promise = fetch(`/internal/favorite_models?model_type=${model_type_mapper[page_name]}&search_value=${searchValue}&page=${page}&page_size=${pageSize}`, {
