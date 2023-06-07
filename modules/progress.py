@@ -56,6 +56,11 @@ def finish_task(id_task, task_failed):
     global current_task_step
     global finished_task_count
     global failed_task_count
+
+    # do nothing if this task is already finished
+    if id_task in finished_tasks:
+        return
+
     logger.info(
         f'finish_task, id_task: {id_task}, current_task: {current_task}, current_task_step: {current_task_step}')
 
