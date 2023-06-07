@@ -386,7 +386,7 @@ function initLoadMore(model_type) {
                 enablePullRefresh: false,
                 window: gradioApp().querySelector('.global-popup'),
                 noMoreDataHtml: `
-                <a onclick="uploadModel()" class="no-more-btn lg primary gradio-button">The End of List</a>
+                <a onclick="uploadModel()" class="no-more-btn lg primary gradio-button">The end of list, click to add more</a>
                 `,
                 // threshold: 20,
             })
