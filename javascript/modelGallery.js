@@ -295,12 +295,22 @@ function uploadModel() {
     gradioApp().querySelector(`#${currentModelTab}_${currentModelType}_upload_button-card`).click();
 }
 
+function removeAllTabScrollBottomDom() {
+    defaultModelType.forEach(modelType => {
+        const scrollBottomDom = gradioApp().querySelector(`#public-${modelType}`).querySelector('.scrollload-bottom');
+        scrollBottomDom.remove();
+    })
+}
+
 function searchPublicModels(event) {
-    searchValue = event.target.value;
+    searchValue = event.target.value.toLowerCase();
     gallertModelCurrentPage[currentModelType] = 1;
     tabSearchValueMap.set(currentModelType, searchValue);
     // getPrivateModelList({model_type: 'checkpoints', page: 1, loading: true, model_workspace: 'private'});
-    getPublicModelList({model_type: currentModelType, page: 1, loading: true, model_workspace: 'public', search: true});
+    gallertModelScrollloads = [];
+    // must remove load more dom to reinitialize
+    removeAllTabScrollBottomDom();
+    getPublicModelList({model_type: currentModelType, page: 1, loading: true, model_workspace: 'public', init: true});
 }
 
 function debounceSearchModels(func, wait=1000, immediate) {
