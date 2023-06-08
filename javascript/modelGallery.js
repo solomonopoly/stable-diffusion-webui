@@ -327,10 +327,11 @@ function tabEventListener (event) {
     const content = event.detail.content;
     const [type, modelType] = content.id.split('-');
     currentModelType = modelType;
+    const mapValue = tabSearchValueMap.get(modelType) === undefined ? '' : tabSearchValueMap.get(modelType);
     if (type === 'public') {
         // not refresh data while at other page
         
-        if (!hasInitTabs.get(modelType) || ((tabSearchValueMap.get(modelType) || searchValue) && tabSearchValueMap.get(modelType) !== searchValue)) {
+        if (!hasInitTabs.get(modelType) || ( mapValue !== searchValue)) {
             getPublicModelList({model_type: currentModelType, page: 1, model_workspace: type, refreshTabLock: true})
             // getPrivateModelList({model_type: currentModelType, page: 1, model_workspace: 'private' })
         } else {
@@ -339,7 +340,7 @@ function tabEventListener (event) {
         personalTabs.toggle(`#personal-${modelType}`);
     } else {
         // not refresh data while on other page
-        if (!hasInitTabs.get(modelType) || ((tabSearchValueMap.get(modelType) || searchValue) && tabSearchValueMap.get(modelType) !== searchValue)) {
+        if (!hasInitTabs.get(modelType) || (mapValue !== searchValue)) {
             getPersonalModelList({model_type: currentModelType, page: 1, model_workspace: type})
         }
         publicTabs.toggle(`#public-${modelType}`);
