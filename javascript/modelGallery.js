@@ -10,7 +10,9 @@ async function openWorkSpaceDialog(model_type = 'checkpoints') {
 }
 
 function resetParams() {
+    searchValue = '';
     hasInitTabs.clear();
+    tabSearchValueMap.clear();
     gallertModelScrollloads = [];
     document.removeEventListener('tabby', tabEventListener);
     gallerySearchBtn && gallerySearchBtn.removeEventListener('input', debounceSearchModelGallery);
@@ -44,13 +46,11 @@ function resetParams() {
 }
 
 function getPrivateModelList({ model_type, page, loading, model_workspace, switchPage }) {
-    const searchValue = gradioApp().querySelector('#gallery-search').value.toLowerCase();
     const promise = fetchGet(`/internal/private_models?model_type=${model_type_mapper[model_type]}&search_value=${searchValue}&page=${page}&page_size=${pageSize}`);
     getPageDataAndUpdateList({ model_type, page, loading, model_workspace, promise, switchPage});
 }
 
 async function  getPublicModelList({ init, model_type, page, loading, model_workspace, switchPage, sl, refreshTabLock }) {
-    const searchValue = gradioApp().querySelector('#gallery-search').value.toLowerCase();
     const promise = fetchGet(`/internal/models?model_type=${model_type_mapper[model_type]}&search_value=${searchValue}&page=${page}&page_size=${pageSize}`);
     getPageDataAndUpdateList({ init, model_type, page, loading, model_workspace, promise, switchPage, sl, refreshTabLock});
 }
@@ -295,8 +295,10 @@ function uploadModel() {
     gradioApp().querySelector(`#${currentModelTab}_${currentModelType}_upload_button-card`).click();
 }
 
-function searchPublicModels() {
+function searchPublicModels(event) {
+    searchValue = event.target.value;
     gallertModelCurrentPage[currentModelType] = 1;
+    tabSearchValueMap.set(currentModelType, searchValue);
     // getPrivateModelList({model_type: 'checkpoints', page: 1, loading: true, model_workspace: 'private'});
     getPublicModelList({model_type: currentModelType, page: 1, loading: true, model_workspace: 'public', search: true});
 }
@@ -328,7 +330,7 @@ function tabEventListener (event) {
     if (type === 'public') {
         // not refresh data while at other page
         
-        if (!hasInitTabs.get(modelType)) {
+        if (!hasInitTabs.get(modelType) || ((tabSearchValueMap.get(modelType) || searchValue) && tabSearchValueMap.get(modelType) !== searchValue)) {
             getPublicModelList({model_type: currentModelType, page: 1, model_workspace: type, refreshTabLock: true})
             // getPrivateModelList({model_type: currentModelType, page: 1, model_workspace: 'private' })
         } else {
@@ -337,11 +339,12 @@ function tabEventListener (event) {
         personalTabs.toggle(`#personal-${modelType}`);
     } else {
         // not refresh data while on other page
-        if (!hasInitTabs.get(modelType)) {
+        if (!hasInitTabs.get(modelType) || ((tabSearchValueMap.get(modelType) || searchValue) && tabSearchValueMap.get(modelType) !== searchValue)) {
             getPersonalModelList({model_type: currentModelType, page: 1, model_workspace: type})
         }
         publicTabs.toggle(`#public-${modelType}`);
     }
+    tabSearchValueMap.set(modelType, searchValue);
     hasInitTabs.set(modelType, true);
 }
 
