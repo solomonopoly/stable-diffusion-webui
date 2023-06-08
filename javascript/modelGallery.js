@@ -111,17 +111,12 @@ async function handleModelData({init, response, model_type, model_workspace, swi
         cardNode.className = 'card';
         
         cardNode.setAttribute('filename', item.name);
-        if (item.preview) {
-            cardNode.style.backgroundImage = `url(${item.preview.replace(/\s/g, encodeURIComponent(' '))})`;
-        }
+        
 
         cardNode.setAttribute('mature-level', item.preview_mature_level || 'None');
 
-        if (judgeLevel(matureLevel.value, cardNode.getAttribute('mature-level'))) {
-            cardNode.style['filter'] = 'blur(10px)';
-        }
-
         cardNode.innerHTML = `
+            <div class="set-bg-filter"></div>
             <div class="metadata-button" title="Show metadata" onclick="extraNetworksRequestMetadata(event, '${model_type}', '${item.name}')"></div>
             <div class="operation-button" onclick="handleModelAddOrRemoved('${item.id}', '${model_type}', '${model_workspace}')">${operateButtonName}</div>
             <div class="actions">
@@ -130,6 +125,15 @@ async function handleModelData({init, response, model_type, model_workspace, swi
             </div>
 
         `
+        const bgFilter = cardNode.querySelector('.set-bg-filter');
+        if (item.preview) {
+            bgFilter.style.backgroundImage = `url(${item.preview.replace(/\s/g, encodeURIComponent(' '))})`;
+        }
+
+        if (judgeLevel(matureLevel.value, cardNode.getAttribute('mature-level'))) {
+            bgFilter.style['filter'] = 'blur(10px)';
+        }
+
         cardsParentNode.appendChild(cardNode);
     })
     init && initLoadMore(model_type);
@@ -271,7 +275,8 @@ function setMatureLevel({modelList, globalLevel}) {
     modelList.forEach(card => {
         if (card.id !== `personal_${currentModelType}_upload_button-card` && card.id !== `public${currentModelType}_upload_button-card`) {
             const needBlur = judgeLevel(globalLevel, card.getAttribute('mature-level'));
-            card.style['filter'] = needBlur ? 'blur(10px)' : 'none';
+            const bgFilter = card.querySelector('.set-bg-filter');
+            bgFilter.style['filter'] = needBlur ? 'blur(10px)' : 'none';
         }
         
     })
