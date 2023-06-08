@@ -42,3 +42,5 @@ let personalTabs = '';
 let publicTabs = '';
 let gallerySearchBtn = null;
 const defaultModelType = ['checkpoints', 'textual_inversion', 'hypernetworks', 'lora'];
+let searchValue = '';
+let tabSearchValueMap = new Map();
