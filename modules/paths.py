@@ -26,6 +26,7 @@ assert sd_path is not None, f"Couldn't find Stable Diffusion in any of: {possibl
 
 path_dirs = [
     (sd_path, 'ldm', 'Stable Diffusion', []),
+    (os.path.join(sd_path, '../taming-transformers'), 'taming', 'Taming Transformers', []),
     (os.path.join(sd_path, '../CodeFormer'), 'inference_codeformer.py', 'CodeFormer', []),
     (os.path.join(sd_path, '../BLIP'), 'models/blip.py', 'BLIP', []),
     (os.path.join(sd_path, '../k-diffusion'), 'k_diffusion/sampling.py', 'k_diffusion', ["atstart"]),
@@ -74,33 +75,101 @@ class Paths:
             self._model_dir.mkdir(parents=True, exist_ok=True)
 
         # output dir save user generated files
-        self._private_output_dir = self._work_dir.joinpath('outputs')
+        self._private_output_dir = base_dir.joinpath('workdir', *parents_path, 'outputs')
         if not user.tire or user.tire.lower() == 'free':
             # free users use same output dir
             self._output_dir = base_dir.joinpath('workdir', 'public', 'outputs')
         else:
             # other users use their own dir
             self._output_dir = self._private_output_dir
+        self._fix_legacy_workdir(base_dir, user.uid)
 
-        # favorite dir
-        self._favorite_dir = self._work_dir.joinpath('favorites')
+        splits = user.uid.split('|')
+        if len(splits) > 1:
+            self._fix_legacy2_workdir(base_dir, splits[1])
+
+    def _fix_legacy_workdir(self, base_dir: pathlib.Path, uid: str):
+        splits = uid.split('|')
+        if len(splits) > 1:
+            legacy_uid = splits[1]
+        else:
+            legacy_uid = uid
+        legacy_workdir = base_dir.joinpath('workdir', legacy_uid)
+        if legacy_workdir.exists():
+            self._move_files(legacy_workdir, self._work_dir)
+
+        legacy_model_dir = base_dir.joinpath('models', legacy_uid)
+        if legacy_model_dir.exists():
+            self._move_files(legacy_model_dir, self._model_dir)
+
+        legacy_output_dir = base_dir.joinpath('workdir', legacy_uid, 'outputs')
+        if legacy_output_dir.exists():
+            self._move_files(legacy_output_dir, self._output_dir)
+
+    def _fix_legacy2_workdir(self, base_dir: pathlib.Path, legacy_uid: str):
+        import hashlib
+        # legacy_uid = uid
+        # encode uid to avoid uid has path invalid character
+        h = hashlib.sha256()
+        h.update(legacy_uid.encode('utf-8'))
+        encoded_user_path = h.hexdigest()
+        # same user data in 4 level folders, to prevent a folder has too many subdir
+        parents_path = (encoded_user_path[:2],
+                        encoded_user_path[2:4],
+                        encoded_user_path[4:6],
+                        encoded_user_path)
+
+        # work dir save user output files
+        legacy_workdir = base_dir.joinpath('workdir', *parents_path)
+        if legacy_workdir.exists():
+            self._move_files(legacy_workdir, self._work_dir)
+
+        # model dir save user uploaded models
+        legacy_model_dir = base_dir.joinpath('models', *parents_path)
+        if legacy_model_dir.exists():
+            self._move_files(legacy_model_dir, self._model_dir)
+
+        # other users use their own dir
+        legacy_output_dir = base_dir.joinpath('workdir', *parents_path, 'outputs')
+        if legacy_output_dir.exists():
+            self._move_files(legacy_output_dir, self._output_dir)
 
     @staticmethod
-    def _check_dir(path: pathlib.Path):
+    def _move_files(from_dir: pathlib.Path, to_dir: pathlib.Path):
+        try:
+            import shutil
+            if from_dir.__str__() == to_dir.__str__():
+                return
+            if not from_dir.exists() or not to_dir.exists():
+                return
+
+            for item in from_dir.iterdir():
+                item_name = item.name
+                dst = to_dir.joinpath(item_name)
+                if item.is_dir():
+                    dst.mkdir(exist_ok=True)
+                    Paths._move_files(item, dst)
+                else:
+                    if not dst.exists():
+                        shutil.move(item, dst)
+                    else:
+                        item.unlink()
+
+            from_dir.rmdir()
+        except Exception as e:
+            logging.error(f'paths: move_files failed: {e.__str__()}')
+            pass
+
+    @staticmethod
+    def _check_dir(path):
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def workdir(self) -> pathlib.Path:
-        return self._check_dir(self._work_dir)
+    def outdir(self):
+        return self._check_dir(self._output_dir)
 
-    def outdir(self, force_to_private=False) -> pathlib.Path:
-        return self._get_output_dir(force_to_private)
-
-    def favorites_dir(self) -> pathlib.Path:
-        return self._check_dir(self._favorite_dir)
-
-    def private_outdir(self) -> pathlib.Path:
+    def private_outdir(self):
         return self._check_dir(self._private_output_dir)
 
     def _get_output_dir(self, force_to_private):
@@ -118,28 +187,16 @@ class Paths:
     def outdir_extras_samples(self, force_to_private=False):
         return self._check_dir(self._get_output_dir(force_to_private).joinpath("extras", 'samples'))
 
-    # 'Output directory for txt2img images
-    def favorite_dir_txt2img_samples(self) -> pathlib.Path:
-        return self._check_dir(self._favorite_dir.joinpath("txt2img", 'samples'))
-
-    # Output directory for img2img images
-    def favorite_dir_img2img_samples(self) -> pathlib.Path:
-        return self._check_dir(self._favorite_dir.joinpath("img2img", 'samples'))
-
-    # Output directory for images from extras tab
-    def favorite_dir_extras_samples(self) -> pathlib.Path:
-        return self._check_dir(self._favorite_dir.joinpath("extras", 'samples'))
-
     # Output directory for txt2img grids
-    def outdir_txt2img_grids(self, force_to_private=False) -> pathlib.Path:
+    def outdir_txt2img_grids(self, force_to_private=False):
         return self._check_dir(self._get_output_dir(force_to_private).joinpath("txt2img", 'grids'))
 
     # Output directory for img2img grids
-    def outdir_img2img_grids(self, force_to_private=False) -> pathlib.Path:
+    def outdir_img2img_grids(self, force_to_private=False):
         return self._check_dir(self._get_output_dir(force_to_private).joinpath("img2img", 'grids'))
 
     # Directory for saving images using the Save button
-    def outdir_save(self) -> pathlib.Path:
+    def outdir_save(self):
         return self._check_dir(self._work_dir.joinpath('save'))
 
     # filename to store user prompt styles
@@ -147,16 +204,16 @@ class Paths:
         return str(self._work_dir.joinpath('styles.csv'))
 
     # dir to store logs and saved images and zips
-    def save_dir(self) -> pathlib.Path:
+    def save_dir(self):
         save_dir = self._work_dir.joinpath('log', 'images')
         return self._check_dir(save_dir)
 
     # dir to store user models
-    def models_dir(self) -> pathlib.Path:
+    def models_dir(self):
         return self._check_dir(self._model_dir)
 
     # dir to store user model previews
-    def model_previews_dir(self) -> pathlib.Path:
+    def model_previews_dir(self):
         return self._check_dir(self._work_dir.joinpath("model_previews"))
 
     def save_image(self, filename: str):
