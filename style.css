@@ -1407,3 +1407,6 @@ textarea {
     white-space: normal !important;
 }
 
+.tabs a {
+    border-bottom: none !important;
+}
