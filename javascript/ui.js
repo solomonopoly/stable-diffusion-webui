@@ -221,9 +221,15 @@ function getImageGenerationTaskId(id_task, tabname){
     return [localStorage.getItem(`${tabname}_task_id`), tabname];
 }
 
+function refreshCheckpoints() {
+    const refeshCheckpointBtn = gradioApp().querySelector('#refresh_sd_model_checkpoint');
+    refeshCheckpointBtn.click();
+}
+
 onUiLoaded(function() {
     showRestoreProgressButton('txt2img', localStorage.getItem("txt2img_task_id"));
     showRestoreProgressButton('img2img', localStorage.getItem("img2img_task_id"));
+    setTimeout(refreshCheckpoints, 100);
 });
 
 

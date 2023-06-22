@@ -411,7 +411,10 @@ options_templates.update(options_section(('training', "Training"), {
 
 
 def _list_checkpoint_tiles(request: gr.Request = None):
-    return {"choices": list_checkpoint_tiles(request)}
+    checkpoint_title_list = list_checkpoint_tiles(request)
+    if checkpoint_title_list:
+        return {"choices": checkpoint_title_list, "value": checkpoint_title_list[0]}
+    return {"choices": checkpoint_title_list}
 
 
 options_templates.update(options_section(('sd', "Stable Diffusion"), {

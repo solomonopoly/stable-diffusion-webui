@@ -22,6 +22,8 @@ def get_value_for_setting(key, request: gr.Request = None):
         args = info.component_args or {}
     args = {k: v for k, v in args.items() if k not in {'precision'}}
 
+    if "value" in args:
+        return gr.update(**args)
     return gr.update(value=value, **args)
 
 
