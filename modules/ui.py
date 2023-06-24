@@ -406,6 +406,39 @@ def apply_setting(key, value):
     return getattr(opts, key)
 
 
+def create_refresh_button(refresh_component, refresh_method, refreshed_args, elem_id, visible=True, interactive=True):
+    def refresh(request: gr.Request):
+        inputs = modules.call_utils.special_args(refresh_method, [], request)
+        if inputs:
+            # the refresh_method either needs a gr.Request object
+            refresh_method(*inputs)
+        else:
+            # or needs nothing
+            refresh_method()
+
+        if callable(refreshed_args):
+            inputs = modules.call_utils.special_args(refreshed_args, [], request)
+            if inputs:
+                args = refreshed_args(*inputs)
+            else:
+                args = refreshed_args()
+        else:
+            args = refreshed_args
+
+        for k, v in args.items():
+            setattr(refresh_component, k, v)
+
+        return gr.update(**(args or {}))
+
+    refresh_button = ToolButton(value=refresh_symbol, elem_id=elem_id, visible=visible, interactive=interactive)
+    refresh_button.click(
+        fn=refresh,
+        inputs=[],
+        outputs=[refresh_component]
+    )
+    return refresh_button
+
+
 def create_output_panel(tabname, outdir):
     return ui_common.create_output_panel(tabname, outdir)
 
@@ -1541,6 +1574,45 @@ def create_ui():
             outputs=[],
         )
 
+    def create_setting_component(key, is_quicksettings=False, visible=True, interactive=True):
+        def fun():
+            return opts.data[key] if key in opts.data else opts.data_labels[key].default
+
+        info = opts.data_labels[key]
+        t = type(info.default)
+
+        args = info.component_args() if callable(info.component_args) else info.component_args
+        args = args if args else {}
+        args["visible"] = visible
+        args["interactive"] = interactive
+
+        if info.component is not None:
+            comp = info.component
+        elif t == str:
+            comp = gr.Textbox
+        elif t == int:
+            comp = gr.Number
+        elif t == bool:
+            comp = gr.Checkbox
+        else:
+            raise Exception(f'bad options item type: {t} for key {key}')
+
+        elem_id = f"setting_{key}"
+
+        if info.refresh is not None:
+            if is_quicksettings:
+                res = comp(
+                    label=info.label, value=fun(), elem_id=elem_id, elem_classes="quicksettings", **(args or {}))
+                create_refresh_button(res, info.refresh, info.component_args, f"refresh_{key}", visible=visible, interactive=interactive)
+            else:
+                with FormRow():
+                    res = comp(label=info.label, value=fun(), elem_id=elem_id, **(args or {}))
+                    create_refresh_button(res, info.refresh, info.component_args, f"refresh_{key}", visible=visible, interactive=interactive)
+        else:
+            res = comp(label=info.label, value=fun(), elem_id=elem_id, **(args or {}))
+
+        return res
+
     loadsave = ui_loadsave.UiLoadsave(cmd_opts.ui_config_file)
 
     settings = ui_settings.UiSettings(txt2img_model_title, img2img_model_title, txt2img_vae_title, img2img_vae_title)
@@ -1696,6 +1768,22 @@ def create_ui():
 
         def update_sd_model_selection(request: gr.Request):
             return gr.update(**update_sd_model_selection_args(request))
+        demo.load(
+            fn=update_sd_model_selection, inputs=None, outputs=sd_model_selection)
+
+        button_set_checkpoint = gr.Button('Change checkpoint', elem_id='change_checkpoint', visible=False)
+        button_set_checkpoint.click(
+            fn=make_run_settings_single('sd_model_checkpoint'),
+            _js="function(v){ var res = desiredCheckpointName; desiredCheckpointName = ''; return [res || v, null]; }",
+            inputs=[component_dict['sd_model_checkpoint'], dummy_component],
+            outputs=[component_dict['sd_model_checkpoint'], text_settings, txt2img_model_title, img2img_model_title],
+        )
+
+        component_keys = [k for k in opts.data_labels.keys() if k in component_dict]
+
+        def get_settings_values(request: gr.Request):
+            return [get_value_for_setting(key, request) for key in component_keys]
+
         demo.load(
             fn=update_sd_model_selection, inputs=None, outputs=sd_model_selection)
 
