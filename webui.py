@@ -332,26 +332,26 @@ def initialize_rest(*, reload_script_modules=False):
     modules.sd_unet.list_unets()
     startup_timer.record("scripts list_unets")
 
-    if not cmd_opts.skip_load_default_model:
-        def load_model():
-            """
-            Accesses shared.sd_model property to load model.
-            After it's available, if it has been loaded before this access by some extension,
-            its optimization may be None because the list of optimizaers has neet been filled
-            by that time, so we apply optimization again.
-            """
-            shared.sd_model  # noqa: B018
+    def load_model():
+        """
+        Accesses shared.sd_model property to load model.
+        After it's available, if it has been loaded before this access by some extension,
+        its optimization may be None because the list of optimizaers has neet been filled
+        by that time, so we apply optimization again.
+        """
+        shared.sd_model  # noqa: B018
 
-            if modules.sd_hijack.current_optimizer is None:
-                modules.sd_hijack.apply_optimizations()
+        if modules.sd_hijack.current_optimizer is None:
+            modules.sd_hijack.apply_optimizations()
 
-        # submit_to_gpu_worker(load_model)
-        Thread(target=load_model).start()
+    # submit_to_gpu_worker(load_model)
+    Thread(target=load_model).start()
 
     Thread(target=devices.first_time_calculation).start()
 
-    shared.reload_hypernetworks()
-    startup_timer.record("reload hypernetworks")
+    if not cmd_opts.skip_load_default_model:
+        shared.reload_hypernetworks()
+        startup_timer.record("reload hypernetworks")
 
     ui_extra_networks.initialize()
     ui_extra_networks.register_default_pages()
