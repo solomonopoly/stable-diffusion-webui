@@ -1441,6 +1441,7 @@ textarea {
 
 .tabs {
     white-space: normal !important;
+    overflow: inherit !important;
 }
 
 .tabs a {
