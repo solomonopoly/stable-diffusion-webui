@@ -605,7 +605,7 @@ async function getModelFromUrl() {
                             notifier.success(`Added model ${model_list[0].name} to your workspace successfully.`)
                         } else if (res.status === 409) {
                             const { detail } = await res.json();
-                            notifier.alert(detail);
+                            notifier.info(detail);
                         } else {
                             notifier.alert(`Added model ${model_list[0].name} to your workspace Failed`)
                         }
