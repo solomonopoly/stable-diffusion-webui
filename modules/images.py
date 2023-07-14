@@ -1,6 +1,7 @@
 import datetime
 import sys
 import traceback
+import uuid
 
 import pytz
 import io
@@ -359,6 +360,8 @@ class FilenameGenerator:
         'hasprompt': lambda self, *args: self.hasprompt(*args),  # accepts formats:[hasprompt<prompt1|default><prompt2>..]
         'clip_skip': lambda self: opts.data["CLIP_stop_at_last_layers"],
         'denoising': lambda self: self.p.denoising_strength if self.p and self.p.denoising_strength else NOTHING_AND_SKIP_PREVIOUS_TEXT,
+        'vae_filename': lambda self: self.get_vae_filename(),
+        'uuid': lambda self: uuid.uuid4().hex,
     }
     default_time_format = '%Y%m%d%H%M%S'
 
