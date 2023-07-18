@@ -118,7 +118,7 @@ def api_middleware(app: FastAPI):
         try:
             res: Response = await call_next(req)
         except Exception as e:
-            return handle_exception(request, e)
+            return handle_exception(req, e)
         duration = str(round(time.time() - ts, 4))
         res.headers["X-Process-Time"] = duration
         endpoint = req.scope.get('path', 'err')
