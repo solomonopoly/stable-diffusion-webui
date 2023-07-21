@@ -5,6 +5,7 @@ import os
 import sys
 from functools import reduce
 import warnings
+import inspect
 
 import gradio as gr
 import gradio.utils
@@ -458,6 +459,35 @@ def create_override_settings_dropdown(tabname, row):
     return dropdown
 
 
+def build_function_signature(
+        func: callable,
+        alwayson_scripts: list[modules.scripts.Script],
+        selectable_scripts: list[modules.scripts.Script],
+        extras: list = None,
+        start_from: int = 0):
+    signature_args = inspect.getfullargspec(func)[0][start_from:]  # remove the first 'request'
+    default_length = len(signature_args)
+    for extension_script in alwayson_scripts + selectable_scripts:
+        extension_name = extension_script.name
+        if extension_name is None:
+            script_name_concat = extension_script.filename
+        else:
+            script_name_concat = "_".join(extension_script.name.lower().split())
+        index_start = extension_script.args_from
+        index_end = extension_script.args_to
+        if index_start is None or index_end is None:
+            continue
+        if len(signature_args) < default_length + index_end:
+            signature_args += [None for _ in range(default_length + index_end - len(signature_args))]
+        if extension_script.api_info is not None:
+            for idx, each_arg in enumerate(extension_script.api_info.args):
+                each_arg_label = f"{script_name_concat}:{each_arg.label}"
+                signature_args[default_length + index_start + idx] = each_arg_label
+    if extras is not None:
+        signature_args += extras
+    return signature_args
+
+
 def create_ui():
     import modules.img2img
     import modules.txt2img
@@ -473,6 +503,7 @@ def create_ui():
         txt2img_prompt, txt2img_prompt_styles, txt2img_negative_prompt, submit, _, _, txt2img_prompt_style_apply, txt2img_save_style, txt2img_paste, extra_networks_button, token_counter, token_button, negative_token_counter, negative_token_button, restore_progress_button, txt2img_model_title, txt2img_vae_title = create_toprow(is_img2img=False)
         need_upgrade = gr.Checkbox(
             value=False, interactive=False, visible=False, elem_classes="upgrade_checkbox")
+        txt2img_signature = gr.Textbox(value="", interactive=False, visible=False, elem_id="txt2img_signature")
 
         dummy_component = gr.Label(visible=False)
         txt_prompt_img = gr.File(label="", elem_id="txt2img_prompt_image", file_count="single", type="binary", visible=False)
@@ -590,6 +621,12 @@ def create_ui():
                     _js="updateGenerateBtn_txt2img"
                 )
 
+            txt2img_signature_args = build_function_signature(
+                modules.txt2img.txt2img,
+                modules.scripts.scripts_txt2img.alwayson_scripts,
+                modules.scripts.scripts_txt2img.selectable_scripts,
+                extras=["model_title", "vae_title"],
+                start_from=1)  # Start from 1 to remove request
             txt2img_args = dict(
                 fn=wrap_gradio_gpu_call(
                     modules.txt2img.txt2img, func_name='txt2img', extra_outputs=[None, '', ''], add_monitor_state=True),
@@ -621,7 +658,7 @@ def create_ui():
                     hr_prompt,
                     hr_negative_prompt,
                     override_settings,
-                ] + custom_inputs + [txt2img_model_title, txt2img_vae_title],
+                ] + custom_inputs + [txt2img_model_title, txt2img_vae_title, txt2img_signature],
 
                 outputs=[
                     txt2img_gallery,
@@ -736,6 +773,7 @@ def create_ui():
         img2img_prompt, img2img_prompt_styles, img2img_negative_prompt, submit, img2img_interrogate, img2img_deepbooru, img2img_prompt_style_apply, img2img_save_style, img2img_paste, extra_networks_button, token_counter, token_button, negative_token_counter, negative_token_button, restore_progress_button, img2img_model_title, img2img_vae_title = create_toprow(is_img2img=True)
         img2img_need_upgrade = gr.Checkbox(
             value=False, interactive=False, visible=False, elem_classes="upgrade_checkbox")
+        img2img_signature = gr.Textbox(value="", interactive=False, visible=False, elem_id="img2img_signature")
 
         img2img_prompt_img = gr.File(label="", elem_id="img2img_prompt_image", file_count="single", type="binary", visible=False)
 
@@ -977,6 +1015,12 @@ def create_ui():
                 show_progress=False,
             )
 
+            img2img_signature_args = build_function_signature(
+                modules.img2img.img2img,
+                modules.scripts.scripts_img2img.alwayson_scripts,
+                modules.scripts.scripts_img2img.selectable_scripts,
+                extras=["model_title", "vae_title"],
+                start_from=1)  # Start from 1 to remove request
             img2img_args = dict(
                 fn=wrap_gradio_gpu_call(
                     modules.img2img.img2img, func_name='img2img', extra_outputs=[None, '', ''], add_monitor_state=True),
@@ -1023,7 +1067,7 @@ def create_ui():
                     img2img_batch_use_png_info,
                     img2img_batch_png_info_props,
                     img2img_batch_png_info_dir,
-                ] + custom_inputs + [img2img_model_title, img2img_vae_title],
+                ] + custom_inputs + [img2img_model_title, img2img_vae_title, img2img_signature],
                 outputs=[
                     img2img_gallery,
                     generation_info,
@@ -1712,6 +1756,10 @@ def create_ui():
         demo.load(
             fn=update_sd_model_selection, inputs=None, outputs=sd_model_selection)
 
+        demo.load(
+            fn=lambda: f"signature({json.dumps(txt2img_signature_args)})", inputs=None, outputs=txt2img_signature)
+        demo.load(
+            fn=lambda: f"signature({json.dumps(img2img_signature_args)})", inputs=None, outputs=img2img_signature)
 
         def modelmerger(request: gradio.routes.Request, *args):
             import modules.call_utils

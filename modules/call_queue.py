@@ -69,7 +69,7 @@ def wrap_gpu_call(request: gradio.routes.Request, func, func_name, id_task, *arg
         if func_name in ('txt2img', 'img2img'):
             progress.set_current_task_step('reload_model_weights')
             script_callbacks.state_updated_callback(shared.state)
-            _check_sd_model(model_title=args[-2], vae_title=args[-1])
+            _check_sd_model(model_title=args[-3], vae_title=args[-2])
         timer.record('load_models')
 
         # do gpu task
