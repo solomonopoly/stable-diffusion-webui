@@ -114,7 +114,14 @@ def wrap_gpu_call(request: gradio.routes.Request, func, func_name, id_task, *arg
     return res
 
 
-def wrap_gradio_gpu_call(func, func_name: str = '', extra_outputs=None, add_monitor_state=False):
+def find_signature_in_args(args: list):
+    for item in args:
+        if isinstance(item, str) and item.startswith("signature("):
+            return item
+    return None
+
+
+def wrap_gradio_gpu_call(func, func_name: str = '', extra_outputs=None, add_monitor_state=False, signature=None):
     @functools.wraps(func)
     def f(request: gradio.routes.Request, *args, **kwargs):
         predict_timeout = dict(request.headers).get('X-Predict-Timeout', shared.cmd_opts.predict_timeout)
@@ -156,12 +163,17 @@ def wrap_gradio_gpu_call(func, func_name: str = '', extra_outputs=None, add_moni
 
         return res
 
-    return wrap_gradio_call(f, extra_outputs=extra_outputs, add_stats=True, add_monitor_state=add_monitor_state)
+    return wrap_gradio_call(
+        f, extra_outputs=extra_outputs, add_stats=True, add_monitor_state=add_monitor_state, signature=signature)
 
 
-def wrap_gradio_call(func, extra_outputs=None, add_stats=False, add_monitor_state=False):
+def wrap_gradio_call(func, extra_outputs=None, add_stats=False, add_monitor_state=False, signature=None):
     @functools.wraps(func)
     async def f(request: gradio.routes.Request, *args, extra_outputs_array=extra_outputs, **kwargs):
+        if signature is not None and find_signature_in_args(args) != signature:
+            signature_mismatch_message = f"<div class='error'>{html.escape('Function signature mismatch, please refresh the page.')}</div>"
+            return (extra_outputs_array + [signature_mismatch_message, False, True]
+                    if add_monitor_state else [signature_mismatch_message, True])
         monitor_state = False
         run_memmon = shared.opts.memmon_poll_rate > 0 and not shared.mem_mon.disabled and add_stats
         if run_memmon:
@@ -214,7 +226,9 @@ def wrap_gradio_call(func, extra_outputs=None, add_stats=False, add_monitor_stat
 
         if not add_stats:
             if add_monitor_state:
-                return tuple(res + [monitor_state])
+                res += [monitor_state]
+            if signature is not None:
+                res += [False]
             return tuple(res)
 
         elapsed = time.perf_counter() - t
@@ -252,7 +266,9 @@ def wrap_gradio_call(func, extra_outputs=None, add_stats=False, add_monitor_stat
         logger.info(f"task({task_id}) task memory delta: {task_end_system_memory - task_start_system_memory:.2f} GB")
 
         if add_monitor_state:
-            return tuple(res + [monitor_state])
+            res += [monitor_state]
+        if signature is not None:
+            res += [False]
         return tuple(res)
 
     return f

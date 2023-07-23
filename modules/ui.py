@@ -488,6 +488,10 @@ def build_function_signature(
     return signature_args
 
 
+def get_signature_string_from_arguement_list(signature_args: list):
+    return f"signature({json.dumps(signature_args)})"
+
+
 def create_ui():
     import modules.img2img
     import modules.txt2img
@@ -503,6 +507,8 @@ def create_ui():
         txt2img_prompt, txt2img_prompt_styles, txt2img_negative_prompt, submit, _, _, txt2img_prompt_style_apply, txt2img_save_style, txt2img_paste, extra_networks_button, token_counter, token_button, negative_token_counter, negative_token_button, restore_progress_button, txt2img_model_title, txt2img_vae_title = create_toprow(is_img2img=False)
         need_upgrade = gr.Checkbox(
             value=False, interactive=False, visible=False, elem_classes="upgrade_checkbox")
+        need_refresh = gr.Checkbox(
+            value=False, interactive=False, visible=False, elem_id="refresh_checkbox")
         txt2img_signature = gr.Textbox(value="", interactive=False, visible=False, elem_id="txt2img_signature")
 
         dummy_component = gr.Label(visible=False)
@@ -629,7 +635,11 @@ def create_ui():
                 start_from=1)  # Start from 1 to remove request
             txt2img_args = dict(
                 fn=wrap_gradio_gpu_call(
-                    modules.txt2img.txt2img, func_name='txt2img', extra_outputs=[None, '', ''], add_monitor_state=True),
+                    modules.txt2img.txt2img,
+                    func_name='txt2img',
+                    extra_outputs=[None, '', ''],
+                    add_monitor_state=True,
+                    signature=get_signature_string_from_arguement_list(txt2img_signature_args)),
                 _js="submit",
                 inputs=[
                     dummy_component,
@@ -665,7 +675,8 @@ def create_ui():
                     generation_info,
                     html_info,
                     html_log,
-                    need_upgrade
+                    need_upgrade,
+                    need_refresh,
                 ],
                 show_progress=False,
             )
@@ -674,6 +685,7 @@ def create_ui():
             submit.click(**txt2img_args)
 
             need_upgrade.change(None, [need_upgrade], None, _js="redirect_to_payment")
+            need_refresh.change(None, [need_refresh], None, _js="notify_to_refresh")
             res_switch_btn.click(fn=None, _js="function(){switchWidthHeight('txt2img')}", inputs=None, outputs=None, show_progress=False)
 
             restore_progress_button.click(
@@ -1023,7 +1035,11 @@ def create_ui():
                 start_from=1)  # Start from 1 to remove request
             img2img_args = dict(
                 fn=wrap_gradio_gpu_call(
-                    modules.img2img.img2img, func_name='img2img', extra_outputs=[None, '', ''], add_monitor_state=True),
+                    modules.img2img.img2img,
+                    func_name='img2img',
+                    extra_outputs=[None, '', ''],
+                    add_monitor_state=True,
+                    signature=get_signature_string_from_arguement_list(img2img_signature_args)),
                 _js="submit_img2img",
                 inputs=[
                     dummy_component,
@@ -1073,7 +1089,8 @@ def create_ui():
                     generation_info,
                     html_info,
                     html_log,
-                    need_upgrade
+                    need_upgrade,
+                    need_refresh,
                 ],
                 show_progress=False,
             )
@@ -1757,9 +1774,13 @@ def create_ui():
             fn=update_sd_model_selection, inputs=None, outputs=sd_model_selection)
 
         demo.load(
-            fn=lambda: f"signature({json.dumps(txt2img_signature_args)})", inputs=None, outputs=txt2img_signature)
+            fn=lambda: get_signature_string_from_arguement_list(txt2img_signature_args),
+            inputs=None,
+            outputs=txt2img_signature)
         demo.load(
-            fn=lambda: f"signature({json.dumps(img2img_signature_args)})", inputs=None, outputs=img2img_signature)
+            fn=lambda: get_signature_string_from_arguement_list(img2img_signature_args),
+            inputs=None,
+            outputs=img2img_signature)
 
         def modelmerger(request: gradio.routes.Request, *args):
             import modules.call_utils
