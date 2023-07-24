@@ -582,7 +582,7 @@ def create_ui(container, button, tabname):
 
     filter = gr.Textbox('', show_label=False, elem_id=tabname + "_extra_search", placeholder="Search...", visible=False)
     button_refresh = gr.Button('Refresh', elem_id=tabname + "_extra_refresh")
-    mature_level = gr.Dropdown(label="Mature Content:", elem_id=f"{tabname}_mature_level", choices=["None", "Soft", "Mature"], value="None", interactive=True)
+    mature_level = gr.Dropdown(label="", elem_id=f"{tabname}_mature_level", choices=["None", "Soft", "Mature"], value="None", interactive=True)
 
     # TODO: Sort function added by upstream and may not work
     gr.Dropdown(choices=['Default Sort', 'Date Created', 'Date Modified', 'Name'], value='Default Sort', elem_id=tabname+"_extra_sort", multiselect=False, visible=False, show_label=False, interactive=True)

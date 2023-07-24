@@ -935,10 +935,8 @@ footer {
 }
 
 .extra-networks .tab-nav .mature_level {
-    position: absolute;
-    right: 0;
-    width: 12em;
-    max-width: 12em;
+    width: 8em;
+    max-width: 8em;
 }
 
 .extra-networks .tab-nav .mature_level label {
