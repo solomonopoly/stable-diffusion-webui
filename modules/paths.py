@@ -100,7 +100,7 @@ class Paths:
 
         # output dir save user generated files
         self._private_output_dir = self._work_dir.joinpath('outputs')
-        if not user.tire or user.tire.lower() == 'free':
+        if not user.tier or user.tier.lower() == 'free':
             # free users use same output dir
             self._output_dir = base_dir.joinpath('workdir', 'public', 'outputs')
         else:
