@@ -5,6 +5,11 @@ import uuid
 import logging
 import json
 import requests
+import base64
+import io
+import traceback
+import sys
+from PIL import Image
 
 import gradio as gr
 
@@ -111,6 +116,60 @@ def _make_gpu_consumption(func_name, named_args, *args, **kwargs) -> dict:
     return result
 
 
+def is_base64_image(s):
+    """
+    Check if a string is a base64 encoded image and return its dimensions.
+
+    :param str s: a string to check
+    :return: tuple (is_image, width, height) or (False, None, None) if the string is not a valid image
+    """
+    try:
+        # Check if the string has the embedded schema and remove it
+        if ";base64," in s:
+            s = s.split(";base64,")[1]
+
+        # Decode the base64 string
+        decoded = base64.b64decode(s)
+
+        # Open the image and get its size
+        image = Image.open(io.BytesIO(decoded))
+        width, height = image.size
+
+        return True, width, height
+    except Exception as e:
+        traceback.print_tb(e.__traceback__, file=sys.stderr)
+        print(e, file=sys.stderr)
+        logger.error(f"Decode image string failed: {e}")
+        return False, None, None
+
+
+def _align_paramters_with_signature(*args):
+    signature_index = None
+    signature = []
+    for idx, item in enumerate(args):
+        if isinstance(item, str) and item.startswith("signature("):
+            signature = json.loads(item[len("signature("):-1])
+            signature_index = idx
+            break
+    params = {}
+    if signature_index is not None:
+        for idx, label in enumerate(signature):
+            if isinstance(args[idx], str):
+                if len(args[idx]) >= 100:
+                    is_image, width, height = is_base64_image(args[idx])
+                    if is_image:
+                        params[label] = {
+                            "type": "image",
+                            "width": width,
+                            "height": height,
+                        }
+                        continue
+            params[label] = args[idx]
+            if idx >= signature_index:
+                break
+    return params
+
+
 def _serialize_object(obj):
     """
     +-------------------+---------------+
@@ -215,6 +274,7 @@ def on_task(request: gr.Request, func, task_info, *args, **kwargs):
         'node': os.getenv('HOST_IP', default=''),
         'added_at': task_info.get('added_at', time.time()),
         'model_title': task_info.get('model_title', ''),
+        "decoded_params": _align_paramters_with_signature(*args),
     }
     resp = requests.post(monitor_addr,
                          headers={
